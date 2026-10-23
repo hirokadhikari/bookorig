@@ -9,15 +9,21 @@ Open it at https://hirokadhikari.github.io/bookorig/
 <table>
   <tr>
     <td align="center"><img src="docs/screenshots/shelf.png" width="200" alt="Bookshelf with four books"><br>The shelf</td>
+    <td align="center"><img src="docs/screenshots/book-card.png" width="200" alt="Book card with read, rename and remove"><br>Book card</td>
     <td align="center"><img src="docs/screenshots/reader.png" width="200" alt="A reflowed page in sepia"><br>Reading</td>
     <td align="center"><img src="docs/screenshots/page-curl.png" width="200" alt="Page curling mid-turn"><br>Page curl</td>
-    <td align="center"><img src="docs/screenshots/book-card.png" width="200" alt="Book card with read, rename and remove"><br>Book card</td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/menu.png" width="200" alt="Reader menu with auto-pace and read aloud"><br>Menu</td>
+    <td align="center"><img src="docs/screenshots/settings.png" width="200" alt="Focus and read-aloud settings"><br>Display &amp; focus</td>
     <td align="center"><img src="docs/screenshots/line-guide.png" width="200" alt="Spotlight line guide in dark mode"><br>Spotlight line guide</td>
     <td align="center"><img src="docs/screenshots/tint-and-bold.png" width="200" alt="Line tint with bold word starts"><br>Line tint and bold starts</td>
-    <td align="center"><img src="docs/screenshots/settings.png" width="200" alt="Display and focus settings"><br>Display &amp; focus</td>
-    <td align="center"><img src="docs/screenshots/bookmarks.png" width="200" alt="Bookmarks list"><br>Bookmarks</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/auto-pace.png" width="200" alt="Guide moving on its own with the speed pill"><br>Auto-pace</td>
+    <td align="center"><img src="docs/screenshots/read-aloud.png" width="200" alt="Spoken word underlined while reading aloud"><br>Read aloud</td>
+    <td align="center"><img src="docs/screenshots/meaning.png" width="200" alt="Word meaning with highlight colours and note"><br>Long-press for meaning</td>
+    <td align="center"><img src="docs/screenshots/bookmarks.png" width="200" alt="Bookmarks, highlights and notes list"><br>Bookmarks &amp; notes</td>
   </tr>
 </table>
 
