@@ -38,9 +38,15 @@ If you lose your place mid-paragraph (ADHD or just a long day), these are the se
 - Line tint adds a faint stripe behind every other line, which makes it harder to drop onto the wrong one.
 - Bold word starts bolds the first part of each word. Some people find it easier to follow and some can't stand it, so it's off by default.
 - Line spacing has snug, normal and airy.
+- Auto-pace moves the guide down the page by itself at a speed you pick in words per minute, and turns the page when it reaches the bottom. Tap the band to pause.
+- Read aloud uses your phone's voices. The guide follows along and the word being spoken is underlined, so your eyes and ears stay on the same line.
 - There's no scrolling anywhere. A page fills the screen and stays put until you turn it.
 - Bookmarks are one tap on the ribbon. They point at the passage rather than a page number, so they still land in the right spot after you change the font size.
 - Every book reopens exactly where you stopped.
+
+## Meanings, highlights and notes
+
+Long-press any word. You get its meaning (this part needs internet), plus four highlight colours, a note box and copy. Drag after the long-press, or tap another word, to select more than one word. Everything you mark shows up under Bookmarks & notes, where you can jump to it or copy it all out. Highlights stick to the words, not the page, so they stay put when you change the text size.
 
 ## Reading
 
