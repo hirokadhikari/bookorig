@@ -182,6 +182,13 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 #seek{width:100%;accent-color:var(--r-accent);height:28px;margin:0}
 .bot-btns{display:flex;justify-content:space-between;gap:8px}
 .rb{flex:1;height:44px;border-radius:22px;border:1px solid var(--r-line);background:transparent;color:var(--r-ink);font:700 14px var(--f-sans);display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.rb.solid{background:var(--r-ink);color:var(--r-page);border-color:var(--r-ink)}
+.rb:disabled{opacity:.4}
+.pace{position:absolute;left:50%;bottom:calc(5px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:55;display:flex;align-items:center;gap:2px;padding:3px;border-radius:20px;background:var(--r-ink);color:var(--r-page);box-shadow:0 8px 24px rgba(0,0,0,.28);transition:opacity .2s}
+.pace button{height:32px;min-width:36px;border:0;border-radius:16px;background:transparent;color:inherit;font:700 15px var(--f-sans);padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.pace button:active{background:rgba(127,127,127,.25)}
+.pace .pv{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;white-space:nowrap}
+.chrome-on .pace{opacity:0;pointer-events:none}
 
 #rscrim{position:absolute;inset:0;z-index:70;background:rgba(0,0,0,.28)}
 .rpanel{position:absolute;left:0;right:0;bottom:0;z-index:80;max-width:620px;margin:0 auto;max-height:80%;overflow-y:auto;background:var(--r-page);color:var(--r-ink);border-radius:20px 20px 0 0;box-shadow:0 -12px 40px rgba(0,0,0,.25);padding:10px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));transform:translateY(105%);transition:transform .32s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;gap:6px}
@@ -257,6 +264,12 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 <section id="reader" hidden aria-label="Reader">
   <div class="stage" id="stage"></div>
   <div id="guide" hidden><div class="band" id="band" role="slider" aria-label="Line guide" tabindex="0"></div></div>
+  <div class="pace" id="pace" hidden role="group" aria-label="Auto-pacer">
+    <button type="button" id="paceSlow" aria-label="Slower">−</button>
+    <button type="button" id="paceToggle" aria-label="Pause auto-pacer"><span id="paceIcon" aria-hidden="true">❚❚</span><span class="pv" id="paceVal">220 wpm</span></button>
+    <button type="button" id="paceFast" aria-label="Faster">+</button>
+    <button type="button" id="paceClose" aria-label="Stop auto-pacer">×</button>
+  </div>
   <div class="rbar" id="rtop">
     <button class="ib" id="rBack" type="button" aria-label="Back to shelf"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Shelf</button>
     <div class="r-title" id="rTitle"></div>
@@ -267,6 +280,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
       <input type="range" id="seek" min="1" max="1" value="1" aria-label="Go to page">
       <div class="seek-lab"><span id="seekPage">Page 1 of 1</span><span id="seekPct">0%</span></div>
     </div>
+    <div class="bot-btns"><button class="rb solid" id="rPaceBtn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>Auto-pace</button></div>
     <div class="bot-btns">
       <button class="rb" id="rBmBtn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z" fill="currentColor"/></svg>Bookmarks</button>
       <button class="rb" id="rSetBtn" type="button"><span style="font-family:var(--f-book);font-size:17px">Aa</span>Display &amp; focus</button>
@@ -327,7 +341,7 @@ const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == n
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
 /* ---------------- settings ---------------- */
-const DEF = { size: 19, spacing: 'normal', face: 'serif', theme: 'sepia', turn: 'curl', guide: 'off', zebra: false, bold: false };
+const DEF = { size: 19, spacing: 'normal', face: 'serif', theme: 'sepia', turn: 'curl', guide: 'off', zebra: false, bold: false, wpm: 220 };
 const S = Object.assign({}, DEF, lsGet('bookorig.settings', {}));
 const saveS = () => lsSet('bookorig.settings', S);
 const SPACING = { snug: 1.45, normal: 1.65, airy: 1.9 };
@@ -804,7 +818,7 @@ async function layout() {
       N = pages.length;
     } else N = r.doc.numPages;
     if (R !== r || r.gen !== gen) throw CANCELLED;
-    r.dims = dims; r.pages = pages; r.N = N;
+    r.dims = dims; r.pages = pages; r.N = N; r.lines = null;
     r.cur = Math.max(0, Math.min(N - 1, indexForPos(r.book.pos)));
     buildView();
   } finally { if (r.gen === gen) r.busy = false; }
@@ -974,7 +988,10 @@ function afterShown(i) {
   const mk = hasBm(i); $('#rMark').setAttribute('aria-pressed', mk); $('#rMark').setAttribute('aria-label', mk ? 'Remove bookmark' : 'Bookmark this page');
   if (R.pendingGuide === 'bottom') { R.guideLine = guideMetrics().lines - 1; } else R.guideLine = 0;
   R.pendingGuide = null;
+  R.lines = null;
+  if (pacing()) { R.guideLine = firstTextLine(0); }
   placeGuide();
+  if (pacing() && R.pace.on) schedulePace(lineDur(R.guideLine) + 150);
   prefetch(i);
 }
 function updateSeekLabel(n) {
@@ -995,8 +1012,9 @@ function guideMetrics() {
   const lh = 34;
   return { top: 6, lh, lines: Math.max(1, Math.floor((d.H - 44) / lh)), left: 6, right: 6 };
 }
+const pacing = () => !!(R && R.pace && R.pace.active);
 function placeGuide() {
-  if (!R || S.guide === 'off') { guide.hidden = true; return; }
+  if (!R || (S.guide === 'off' && !pacing())) { guide.hidden = true; return; }
   guide.hidden = false; guide.classList.toggle('spot', S.guide === 'spot');
   const m = guideMetrics();
   R.guideLine = Math.max(0, Math.min(m.lines - 1, R.guideLine));
@@ -1018,9 +1036,84 @@ band.addEventListener('pointermove', e => {
   if (!bandDrag.moved) return;
   const m = guideMetrics(); R.guideLine = Math.max(0, Math.min(m.lines - 1, bandDrag.line + Math.round(dy / m.lh))); placeGuide();
 });
-const endBand = e => { if (!bandDrag) return; const moved = bandDrag.moved; bandDrag = null; band.style.transition = ''; if (!moved && e.type === 'pointerup') stepGuide(1); };
+const endBand = e => {
+  if (!bandDrag) return; const moved = bandDrag.moved; bandDrag = null; band.style.transition = '';
+  if (pacing()) { if (moved) { if (R.pace.on) schedulePace(lineDur(R.guideLine)); } else if (e.type === 'pointerup') togglePace(); return; }
+  if (!moved && e.type === 'pointerup') stepGuide(1);
+};
 band.addEventListener('pointerup', endBand); band.addEventListener('pointercancel', endBand);
 band.addEventListener('keydown', e => { if (e.key === 'ArrowDown') { e.preventDefault(); stepGuide(1); } if (e.key === 'ArrowUp') { e.preventDefault(); stepGuide(-1); } });
+
+/* line map: which words sit on which line of the page on screen */
+function pageLines(i) {
+  const d = R.dims, el = stage.querySelector(`.pg[data-i="${i}"] .pg-content`);
+  const n = el && el.offsetHeight ? Math.max(1, Math.round(el.offsetHeight / d.lh)) : Math.floor(d.bodyH / d.lh);
+  const lines = Array.from({ length: n }, () => ({ w: 0, t: [] }));
+  if (!el) return lines;
+  const top = el.getBoundingClientRect().top;
+  const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const rg = document.createRange();
+  for (let node = tw.nextNode(); node; node = tw.nextNode()) {
+    const re = /\S+/g; let m;
+    while ((m = re.exec(node.data))) {
+      rg.setStart(node, m.index); rg.setEnd(node, m.index + m[0].length);
+      const r = rg.getClientRects()[0]; if (!r) continue;
+      const k = Math.floor((r.top - top + 2) / d.lh);
+      if (k < 0 || k >= n) continue;
+      // a word split by <b> tags counts once: only count text that starts a word
+      const startsWord = m.index > 0 || !node.previousSibling || /\s$/.test(node.previousSibling.textContent || '');
+      if (startsWord) lines[k].w++;
+      lines[k].t.push(m[0]);
+    }
+  }
+  return lines;
+}
+function curLines() {
+  if (!R.lines || R.lines.i !== R.cur) { R.lines = { i: R.cur, l: pageLines(R.cur) }; if (R.dims.spread && R.pf && R.cur + 1 < R.N) { const r2 = pageLines(R.cur + 1); R.lines.l.forEach((x, k) => { if (r2[k]) { x.w += r2[k].w; x.t = x.t.concat(r2[k].t); } }); } }
+  return R.lines.l;
+}
+function firstTextLine(from) { const l = curLines(); let g = from; while (g < l.length && !l[g].w) g++; return g < l.length ? g : 0; }
+function lineDur(k) { const l = curLines()[k]; const w = l ? l.w : 0; return Math.max(320, Math.round(w * 60000 / S.wpm) + 90); }
+
+/* auto-pacer */
+function paceUI() {
+  const p = R && R.pace; const box = $('#pace');
+  box.hidden = !(p && p.active);
+  if (!p) return;
+  $('#paceIcon').textContent = p.on ? '❚❚' : '▶';
+  $('#paceToggle').setAttribute('aria-label', p.on ? 'Pause auto-pacer' : 'Resume auto-pacer');
+  $('#paceVal').textContent = S.wpm + ' wpm';
+  $('#rPaceBtn').lastChild.textContent = p.active ? (p.on ? 'Pause pacer' : 'Resume pacer') : 'Auto-pace';
+}
+function schedulePace(ms) { clearTimeout(R.pace.t); R.pace.t = setTimeout(paceTick, ms); }
+function paceTick() {
+  if (!R || !R.pace.on) return;
+  const l = curLines(); let g = R.guideLine + 1;
+  while (g < l.length && !l[g].w) g++;
+  if (g >= l.length) {
+    const step = R.pf && R.dims.spread ? 2 : 1;
+    if (R.cur + step >= R.N) { stopPace(); toast('You reached the end of the book.'); return; }
+    R.pendingGuide = 'top'; next(); return; // afterShown carries on from the new page
+  }
+  R.guideLine = g; placeGuide(); schedulePace(lineDur(g));
+}
+function startPace() {
+  if (!R) return;
+  if (R.mode !== 'reflow') { toast('Auto-pace works in the Reflow layout. Switch it under Display & focus.', 3500); return; }
+  R.pace = R.pace || {}; R.pace.active = true; R.pace.on = true; R.lines = null;
+  closePanels(); showChrome(false);
+  R.guideLine = firstTextLine(Math.min(R.guideLine, curLines().length - 1));
+  placeGuide(); paceUI(); schedulePace(lineDur(R.guideLine) + 400);
+}
+function pausePace() { if (!pacing()) return; R.pace.on = false; clearTimeout(R.pace.t); paceUI(); }
+function togglePace() { if (!pacing()) return startPace(); if (R.pace.on) pausePace(); else { R.pace.on = true; paceUI(); schedulePace(lineDur(R.guideLine)); } }
+function stopPace() { if (!R || !R.pace) return; clearTimeout(R.pace.t); R.pace.on = false; R.pace.active = false; paceUI(); placeGuide(); }
+function setWpm(d) { S.wpm = Math.max(80, Math.min(600, S.wpm + d)); saveS(); paceUI(); if ($('#setPanel').classList.contains('open')) renderSetPanel(); }
+$('#paceToggle').addEventListener('click', togglePace);
+$('#paceSlow').addEventListener('click', () => setWpm(-20));
+$('#paceFast').addEventListener('click', () => setWpm(20));
+$('#paceClose').addEventListener('click', stopPace);
+$('#rPaceBtn').addEventListener('click', () => { if (pacing()) { togglePace(); showChrome(false); } else startPace(); });
 
 /* chrome + gestures */
 const chromeOn = () => reader.classList.contains('chrome-on');
@@ -1122,6 +1215,7 @@ function renderSetPanel() {
     <div class="opt"><span>Line guide<small>Tap the band for the next line, drag to move it</small></span>${seg('guide', [['off', 'Off'], ['band', 'Band'], ['spot', 'Spotlight']])}</div>
     <div class="opt"><span>Line tint<small>Faint stripe on every other line</small></span>${seg('zebra', [['false', 'Off'], ['true', 'On']])}</div>
     <div class="opt"><span>Bold word starts</span>${seg('bold', [['false', 'Off'], ['true', 'On']])}</div>
+    <div class="opt"><span>Auto-pace speed<small>Words per minute for the moving guide</small></span><div class="seg"><button type="button" data-wpm="-20" aria-label="Slower">−</button><span class="size-val" style="min-width:64px">${S.wpm} wpm</span><button type="button" data-wpm="20" aria-label="Faster">+</button></div></div>
     <div class="rp-h">Page</div>
     <div class="opt"><span>Theme</span><div class="seg" role="group">${[['light', '#fbfaf6'], ['sepia', '#f3ead6'], ['dark', '#171614']].map(([v, c]) => `<button type="button" data-set="theme" data-v="${v}" aria-pressed="${S.theme === v}" aria-label="${v} theme"><span class="sw" style="background:${c}"></span></button>`).join('')}</div></div>
     <div class="opt"><span>Page turn</span>${seg('turn', [['curl', 'Curl'], ['slide', 'Slide']])}</div>
@@ -1134,6 +1228,7 @@ function scheduleRelayout(delay = 0) {
 }
 $('#setPanel').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
+  if (b.dataset.wpm) { setWpm(+b.dataset.wpm); return; }
   if (b.dataset.size) { S.size = Math.max(14, Math.min(30, S.size + (+b.dataset.size))); saveS(); applyReaderStyle(); renderSetPanel(); if (R.mode === 'reflow') scheduleRelayout(450); return; }
   if (b.dataset.mode) {
     if (b.dataset.mode === R.mode) return;
@@ -1154,6 +1249,7 @@ $('#setPanel').addEventListener('click', async e => {
 const panelOpen = () => $('#setPanel').classList.contains('open') || $('#bmPanel').classList.contains('open');
 function openPanel(which) {
   closePanels(true);
+  if (R && R.pace && R.pace.on) { pausePace(); R.pace.resume = true; }
   if (which === 'set') renderSetPanel(); else renderBmPanel();
   $('#rscrim').hidden = false;
   const p = which === 'set' ? $('#setPanel') : $('#bmPanel');
@@ -1161,9 +1257,11 @@ function openPanel(which) {
 }
 function closePanels(quick) {
   $('#setPanel').classList.remove('open'); $('#bmPanel').classList.remove('open'); $('#rscrim').hidden = true;
+  if (quick !== true && R && R.pace && R.pace.resume) { R.pace.resume = false; if (R.pace.active) { R.pace.on = true; paceUI(); schedulePace(lineDur(R.guideLine) + 300); } }
 }
 
 async function closeReader() {
+  if (R && R.pace) { clearTimeout(R.pace.t); R.pace.active = false; } $('#pace').hidden = true; $('#rPaceBtn').lastChild.textContent = 'Auto-pace';
   if (!R) { reader.hidden = true; return; }
   clearTimeout(saveT);
   const b = R.book; if (R.N) b.pos = posForIndex(R.cur);
@@ -1191,7 +1289,7 @@ window.addEventListener('resize', () => {
 });
 document.addEventListener('visibilitychange', () => {
   if (!R) return;
-  if (document.visibilityState === 'hidden') { R.book.pos = posForIndex(R.cur); saveBook(R.book); }
+  if (document.visibilityState === 'hidden') { R.book.pos = posForIndex(R.cur); saveBook(R.book); pausePace(); }
   else requestWake();
 });
 
