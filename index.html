@@ -133,9 +133,10 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
   --r-page:#f3ead6;--r-ink:#3a2e22;--r-soft:#7d6c58;--r-desk:#cdbf9f;--r-bar:rgba(243,234,214,.97);--r-line:rgba(58,46,34,.16);--r-band:rgba(240,186,60,.34);--r-dim:rgba(243,234,214,.74);--r-zebra:rgba(120,85,40,.075);--r-accent:#a2401f;
   --padx:24px;--padt:calc(30px + env(safe-area-inset-top,0px));--padb:calc(46px + env(safe-area-inset-bottom,0px));
   --rfs:19px;--lh:31px;--rfont:var(--f-book);
+  --hl-y:rgba(255,205,40,.42);--hl-g:rgba(80,200,120,.34);--hl-b:rgba(80,150,255,.30);--hl-p:rgba(255,110,170,.30);
   background:var(--r-desk);color:var(--r-ink);color-scheme:light}
 #reader[data-theme="light"]{--r-page:#fbfaf6;--r-ink:#1f1c17;--r-soft:#6f6a60;--r-desk:#d9d5cc;--r-bar:rgba(251,250,246,.97);--r-line:rgba(31,28,23,.14);--r-band:rgba(255,206,70,.36);--r-dim:rgba(251,250,246,.74);--r-zebra:rgba(70,100,150,.07);--r-accent:#b5482a}
-#reader[data-theme="dark"]{--r-page:#171614;--r-ink:#d8d1c3;--r-soft:#8d867a;--r-desk:#090807;--r-bar:rgba(23,22,20,.97);--r-line:rgba(239,230,210,.14);--r-band:rgba(233,177,59,.2);--r-dim:rgba(23,22,20,.78);--r-zebra:rgba(239,230,210,.05);--r-accent:#e9b13b;color-scheme:dark}
+#reader[data-theme="dark"]{--hl-y:rgba(255,205,40,.28);--hl-g:rgba(80,200,120,.26);--hl-b:rgba(80,150,255,.28);--hl-p:rgba(255,110,170,.26);--r-page:#171614;--r-ink:#d8d1c3;--r-soft:#8d867a;--r-desk:#090807;--r-bar:rgba(23,22,20,.97);--r-line:rgba(239,230,210,.14);--r-band:rgba(233,177,59,.2);--r-dim:rgba(23,22,20,.78);--r-zebra:rgba(239,230,210,.05);--r-accent:#e9b13b;color-scheme:dark}
 .stage{position:absolute;inset:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
 .flipbook{position:absolute;left:0;top:0;width:100%}
 .pg{background:var(--r-page);color:var(--r-ink);overflow:hidden}
@@ -189,6 +190,36 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 .pace button:active{background:rgba(127,127,127,.25)}
 .pace .pv{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;white-space:nowrap}
 .chrome-on .pace{opacity:0;pointer-events:none}
+.pg-content mark.hl{color:inherit;border-radius:2px;background:var(--hl-y)}
+.pg-content mark.c-green{background:var(--hl-g)}.pg-content mark.c-blue{background:var(--hl-b)}.pg-content mark.c-pink{background:var(--hl-p)}
+.pg-content mark.noted{box-shadow:inset 0 -2px 0 var(--r-accent)}
+.sel-layer{position:absolute;inset:0;z-index:52;pointer-events:none}
+.sel-r{position:absolute;border-radius:3px;background:color-mix(in srgb,var(--r-accent) 26%,transparent);outline:1.5px solid color-mix(in srgb,var(--r-accent) 60%,transparent)}
+.sel-sheet{z-index:85;max-height:62%}
+.sel-quote{margin:4px 0 0;padding:2px 0 2px 12px;border-left:3px solid var(--r-accent);font:italic 16px/1.45 var(--f-book);color:var(--r-ink);max-height:6.6em;overflow:auto}
+.sel-tip{margin:2px 0 0;color:var(--r-soft);font:13px var(--f-sans)}
+.sel-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.sel-actions .rb{flex:0 1 auto;padding:0 14px;height:40px}
+.swatches{display:flex;gap:6px;margin-right:4px}
+.sw-btn{width:34px;height:34px;border-radius:50%;border:2px solid var(--r-line);cursor:pointer}
+.sw-btn.on{border-color:var(--r-ink);box-shadow:0 0 0 2px var(--r-page) inset}
+.sw-btn.c-yellow{background:var(--hl-y)}.sw-btn.c-green{background:var(--hl-g)}.sw-btn.c-blue{background:var(--hl-b)}.sw-btn.c-pink{background:var(--hl-p)}
+.sel-note{margin:8px 0 0;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--r-ink) 6%,transparent);font:15px/1.45 var(--f-sans);white-space:pre-wrap}
+#noteBox{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+#noteBox[hidden]{display:none}
+#noteText{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid var(--r-line);background:var(--r-page);color:var(--r-ink);font:16px/1.4 var(--f-sans);padding:10px 12px;resize:vertical}
+.sel-row{display:flex;gap:8px}
+.def{margin-top:10px;padding-top:10px;border-top:1px solid var(--r-line);font:15px/1.45 var(--f-sans)}
+.def-head{display:flex;gap:10px;align-items:baseline;font-family:var(--f-book)}
+.def-head b{font-size:20px}.def-head span{color:var(--r-soft)}
+.def ol{margin:8px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.def i{color:var(--r-soft);margin-right:4px}
+.def em{display:block;color:var(--r-soft);font-style:italic;font-family:var(--f-book)}
+.def-wait{margin:0;color:var(--r-soft)}
+.def-src{margin:8px 0 0;font-size:11px;color:var(--r-soft)}
+.hl-item .bm-go span{border-left:4px solid var(--hl-y);padding-left:8px}
+.hl-item.c-green .bm-go span{border-left-color:var(--hl-g)}.hl-item.c-blue .bm-go span{border-left-color:var(--hl-b)}.hl-item.c-pink .bm-go span{border-left-color:var(--hl-p)}
+.hl-note{font:14px/1.4 var(--f-sans)!important;-webkit-line-clamp:3!important;color:var(--r-soft)}
 .word-hi{position:absolute;z-index:51;pointer-events:none;border-radius:4px;background:color-mix(in srgb,var(--r-accent) 22%,transparent);box-shadow:inset 0 -3px 0 var(--r-accent);transition:left .12s,top .12s,width .12s}
 
 #rscrim{position:absolute;inset:0;z-index:70;background:rgba(0,0,0,.28)}
@@ -284,13 +315,14 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
     </div>
     <div class="bot-btns"><button class="rb solid" id="rPaceBtn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>Auto-pace</button><button class="rb solid" id="rSpeakBtn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Read aloud</button></div>
     <div class="bot-btns">
-      <button class="rb" id="rBmBtn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z" fill="currentColor"/></svg>Bookmarks</button>
+      <button class="rb" id="rBmBtn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z" fill="currentColor"/></svg>Bookmarks &amp; notes</button>
       <button class="rb" id="rSetBtn" type="button"><span style="font-family:var(--f-book);font-size:17px">Aa</span>Display &amp; focus</button>
     </div>
   </div>
   <div id="rscrim" hidden></div>
   <div class="rpanel" id="setPanel" role="dialog" aria-label="Display and focus settings"></div>
-  <div class="rpanel" id="bmPanel" role="dialog" aria-label="Bookmarks"></div>
+  <div class="rpanel" id="bmPanel" role="dialog" aria-label="Bookmarks and notes"></div>
+  <div class="rpanel sel-sheet" id="selSheet" role="dialog" aria-label="Selected text"></div>
   <div id="rload" hidden>
     <div class="rl-card">
       <div class="rl-title" id="rlTitle">Opening</div>
@@ -677,7 +709,7 @@ async function openBook(id) {
     const r = R;
     await layout();
     if (R === r && !r.busy) hideLoading();
-    if (!lsGet('bookorig.tipShown', false)) { lsSet('bookorig.tipShown', true); toast('Tap the middle of the page for menus. Tap the edges or swipe to turn.', 4500); }
+    if (!lsGet('bookorig.tipShown', false)) { lsSet('bookorig.tipShown', true); toast('Tap the middle for menus, the edges to turn. Long-press a word for its meaning, highlights and notes.', 6000); }
   } catch (e) {
     if (e === CANCELLED) return;
     console.error(e);
@@ -847,7 +879,7 @@ function pageEl(i) {
   const el = document.createElement('div');
   el.className = 'pg' + (hasBm(i) ? ' bm' : ''); el.dataset.i = i;
   const foot = `<div class="pg-foot"><span class="pf-t">${esc(R.book.title)}</span><span>${i + 1}</span></div><div class="ribbon"></div>`;
-  if (R.mode === 'reflow') el.innerHTML = `<div class="pg-body"><div class="pg-content" lang="en">${R.pages[i].h}</div></div>${foot}`;
+  if (R.mode === 'reflow') { el.innerHTML = `<div class="pg-body"><div class="pg-content" lang="en">${R.pages[i].h}</div></div>${foot}`; decoratePage(el, i); }
   else {
     el.classList.add('pg-img');
     el.innerHTML = `<div class="pg-wait">Page ${i + 1}</div><img alt="Page ${i + 1}" hidden>${foot}`;
@@ -991,6 +1023,7 @@ function afterShown(i) {
   if (R.pendingGuide === 'bottom') { R.guideLine = guideMetrics().lines - 1; } else R.guideLine = 0;
   R.pendingGuide = null;
   R.lines = null;
+  if (R.sel) closeSel();
   if (pacing()) { wordHi.hidden = true; R.guideLine = firstTextLine(0); }
   placeGuide();
   paceOnNewPage();
@@ -1051,6 +1084,7 @@ function pageTokens(i) {
   const d = R.dims, el = stage.querySelector(`.pg[data-i="${i}"] .pg-content`);
   const toks = [];
   if (!el) return toks;
+  [...el.children].forEach(b => { b.__wn = 0; });
   const top = el.getBoundingClientRect().top;
   const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   const rg = document.createRange();
@@ -1065,7 +1099,8 @@ function pageTokens(i) {
       } else {
         rg.setStart(node, m.index); rg.setEnd(node, m.index + m[0].length);
         const r = rg.getClientRects()[0];
-        toks.push({ text: m[0], line: r ? Math.floor((r.top - top + 2) / d.lh) : -1, blk, sn: node, so: m.index, en: node, eo: m.index + m[0].length });
+        const wn = blk ? (blk.__wn = (blk.__wn || 0) + 1) - 1 : 0;
+        toks.push({ text: m[0], line: r ? Math.floor((r.top - top + 2) / d.lh) : -1, blk, p: blk && blk.dataset.p != null ? +blk.dataset.p : -1, w: (blk && +blk.dataset.w || 0) + wn, sn: node, so: m.index, en: node, eo: m.index + m[0].length });
       }
       prevEndsSpace = false;
     }
@@ -1264,6 +1299,169 @@ $('#paceClose').addEventListener('click', stopPace);
 $('#rPaceBtn').addEventListener('click', () => { if (pacing() && R.pace.mode === 'pace') { togglePace(); showChrome(false); } else startPace('pace'); });
 $('#rSpeakBtn').addEventListener('click', () => { if (isSpeak()) { togglePace(); showChrome(false); } else startPace('speak'); });
 
+/* highlights, notes and meanings (long-press a word) */
+const HL_COLORS = [['yellow', 'Yellow'], ['green', 'Green'], ['blue', 'Blue'], ['pink', 'Pink']];
+const selLayer = document.createElement('div'); selLayer.className = 'sel-layer'; reader.appendChild(selLayer);
+// Paint saved highlights into a page and tag each paragraph with where it sits in the book.
+function decoratePage(el, i) {
+  if (!R || R.mode !== 'reflow' || !R.pages || !R.pages[i]) return;
+  const pc = el.querySelector('.pg-content'); if (!pc) return;
+  const pg = R.pages[i], hl = R.book.hl || [];
+  [...pc.children].forEach((blk, j) => {
+    const p = pg.sp + j, base = j === 0 ? pg.sw : 0;
+    blk.dataset.p = p; blk.dataset.w = base;
+    if (blk.dataset.src == null) blk.dataset.src = blk.innerHTML;
+    const hits = hl.filter(h => h.p0 <= p && h.p1 >= p);
+    const restore = () => { if (blk.dataset.marked) { blk.innerHTML = blk.dataset.src; delete blk.dataset.marked; } };
+    if (!hits.length) return restore();
+    const words = blk.textContent.split(' '), n = words.length, cls = new Array(n).fill(null);
+    hits.forEach(h => { const a = p === h.p0 ? h.w0 - base : 0, b = p === h.p1 ? h.w1 - base : n - 1; for (let k = Math.max(0, a); k <= Math.min(n - 1, b); k++) cls[k] = h; });
+    if (cls.every(x => !x)) return restore();
+    let html = '', k = 0;
+    while (k < n) {
+      const h = cls[k]; let e = k; while (e + 1 < n && cls[e + 1] === h) e++;
+      const seg = wordsHTML(words.slice(k, e + 1));
+      html += (k ? ' ' : '') + (h ? `<mark class="hl c-${h.color}${h.note ? ' noted' : ''}" data-h="${h.id}">${seg}</mark>` : seg);
+      k = e + 1;
+    }
+    blk.innerHTML = html; blk.dataset.marked = '1';
+  });
+}
+function refreshMarks() { stage.querySelectorAll('.pg[data-i]').forEach(el => decoratePage(el, +el.dataset.i)); R.lines = null; }
+
+function tokAt(x, y) {
+  let node = null, off = 0;
+  try {
+    if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); if (r) { node = r.startContainer; off = r.startOffset; } }
+    else if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(x, y); if (p) { node = p.offsetNode; off = p.offset; } }
+  } catch (e) {}
+  if (!node || node.nodeType !== 3) return -1;
+  const toks = curMap().t;
+  for (let k = 0; k < toks.length; k++) {
+    const t = toks[k];
+    if (t.sn === node && off >= t.so && (t.sn !== t.en || off <= t.eo)) return k;
+    if (t.en === node && t.sn !== t.en && off <= t.eo) return k;
+  }
+  return -1;
+}
+const selRange = () => { const s = R.sel; return [Math.min(s.a, s.b), Math.max(s.a, s.b)]; };
+const selText = () => { if (R.sel.hid) { const h = R.book.hl.find(x => x.id === R.sel.hid); return h ? h.text : ''; } const [a, b] = selRange(); return curMap().t.slice(a, b + 1).map(t => t.text).join(' '); };
+function renderSel() {
+  selLayer.innerHTML = '';
+  if (!R || !R.sel) return;
+  const rr = reader.getBoundingClientRect(); let rects = [];
+  if (R.sel.hid) stage.querySelectorAll(`mark[data-h="${R.sel.hid}"]`).forEach(m => rects.push(...m.getClientRects()));
+  else {
+    const toks = curMap().t, [a, b] = selRange(), rg = document.createRange();
+    rg.setStart(toks[a].sn, toks[a].so); rg.setEnd(toks[b].en, toks[b].eo);
+    rects = [...rg.getClientRects()];
+  }
+  rects.forEach(r => { if (r.width < 1) return; const d = document.createElement('div'); d.className = 'sel-r'; d.style.cssText = `left:${r.left - rr.left - 1}px;top:${r.top - rr.top}px;width:${r.width + 2}px;height:${r.height}px`; selLayer.appendChild(d); });
+}
+function longPress(p) {
+  if (!R || R.anim) return;
+  if (R.mode !== 'reflow') { toast('Meanings, highlights and notes work in the Reflow layout.', 3000); return; }
+  const k = tokAt(p.x, p.y); if (k < 0) return;
+  p.sel = true;
+  if (R.pf) { R.pf.isUserTouch = false; try { R.pf.getFlipController().stopMove(); } catch (e) {} }
+  try { navigator.vibrate && navigator.vibrate(12); } catch (e) {}
+  if (R.pace && R.pace.on) { pausePace(); R.pace.resume = true; }
+  closePanels(true); showChrome(false);
+  const t = curMap().t[k], mark = t.sn.parentElement && t.sn.parentElement.closest('mark.hl');
+  R.sel = mark ? { hid: mark.dataset.h, a: k, b: k, extending: false } : { a: k, b: k, extending: true };
+  renderSel();
+  if (mark) { p.sel = 'done'; openSelSheet(); }
+}
+function closeSel() {
+  if (!R || !R.sel) return;
+  R.sel = null; selLayer.innerHTML = ''; $('#selSheet').classList.remove('open');
+  if (R.pace && R.pace.resume) { R.pace.resume = false; if (R.pace.active) resumePace(300); }
+}
+const cleanWord = w => w.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '').replace(/[’']s$/i, '').toLowerCase();
+function openSelSheet(focusNote) {
+  const h = R.sel.hid ? R.book.hl.find(x => x.id === R.sel.hid) : null;
+  const text = selText(), words = text.split(' ').filter(Boolean), single = !h && words.length === 1;
+  const word = cleanWord(words[0] || '');
+  $('#selSheet').innerHTML = `<div class="grab"></div>
+    <blockquote class="sel-quote">${esc(text.length > 260 ? text.slice(0, 260) + '…' : text)}</blockquote>
+    ${!h && R.sel.extending !== null ? `<p class="sel-tip">Tap another word to select up to it.</p>` : ''}
+    <div class="sel-actions">
+      <div class="swatches" role="group" aria-label="Highlight colour">${HL_COLORS.map(([c, l]) => `<button type="button" class="sw-btn c-${c}${h && h.color === c ? ' on' : ''}" data-hl="${c}" aria-label="${h ? 'Change to ' : 'Highlight '}${l.toLowerCase()}"></button>`).join('')}</div>
+      <button type="button" class="rb" data-act="note">${h && h.note ? 'Edit note' : 'Note'}</button>
+      ${word ? `<button type="button" class="rb" data-act="meaning">Meaning</button>` : ''}
+      <button type="button" class="rb" data-act="copy">Copy</button>
+      ${h ? `<button type="button" class="rb" data-act="remove">Remove</button>` : ''}
+    </div>
+    ${h && h.note ? `<p class="sel-note">${esc(h.note)}</p>` : ''}
+    <div id="noteBox" hidden><textarea id="noteText" rows="3" placeholder="Write a note about this passage">${esc(h && h.note || '')}</textarea><div class="sel-row"><button type="button" class="rb solid" data-act="saveNote">Save note</button><button type="button" class="rb" data-act="cancelNote">Cancel</button></div></div>
+    <div id="defBox" class="def" hidden></div>`;
+  $('#selSheet').classList.add('open');
+  if (focusNote) showNoteBox(); else if (single && word) showMeaning(word);
+}
+function showNoteBox() { $('#noteBox').hidden = false; const t = $('#noteText'); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+function saveHighlight(color, note) {
+  const b = R.book; b.hl = b.hl || [];
+  if (R.sel.hid) {
+    const h = b.hl.find(x => x.id === R.sel.hid); if (!h) return null;
+    if (color) h.color = color; if (note !== undefined) h.note = note; return h;
+  }
+  const toks = curMap().t, [a, z] = selRange(), ta = toks[a], tz = toks[z];
+  if (!ta || !tz || ta.p < 0 || tz.p < 0) { toast('Couldn’t mark that text.'); return null; }
+  const h = { id: 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), p0: ta.p, w0: ta.w, p1: tz.p, w1: tz.w, color: color || 'yellow', note: note || '', text: toks.slice(a, z + 1).map(t => t.text).join(' ').slice(0, 600), at: Date.now() };
+  b.hl.push(h); R.sel = { hid: h.id, a, b: z, extending: null };
+  return h;
+}
+async function selAction(act, el) {
+  if (!R || !R.sel) return;
+  if (el && el.dataset.hl) { const h = saveHighlight(el.dataset.hl); if (!h) return; await saveBook(R.book); refreshMarks(); renderSel(); openSelSheet(); toast('Highlighted', 1200); return; }
+  if (act === 'note') return showNoteBox();
+  if (act === 'cancelNote') { $('#noteBox').hidden = true; return; }
+  if (act === 'saveNote') { const v = $('#noteText').value.trim(); const h = saveHighlight(null, v); if (!h) return; await saveBook(R.book); refreshMarks(); renderSel(); openSelSheet(); toast(v ? 'Note saved' : 'Note removed', 1200); return; }
+  if (act === 'copy') { copyText(selText()); return; }
+  if (act === 'remove') { R.book.hl = R.book.hl.filter(x => x.id !== R.sel.hid); await saveBook(R.book); refreshMarks(); closeSel(); toast('Highlight removed', 1200); return; }
+  if (act === 'meaning') { const w = cleanWord(selText().split(' ')[0] || ''); if (w) showMeaning(w); }
+}
+$('#selSheet').addEventListener('click', e => { const b = e.target.closest('button'); if (b) selAction(b.dataset.act, b); });
+function copyText(t) {
+  const done = () => toast('Copied', 1200);
+  try { navigator.clipboard.writeText(t).then(done, () => fallback()); } catch (e) { fallback(); }
+  function fallback() { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (er) { toast('Couldn’t copy on this browser.'); } ta.remove(); }
+}
+
+/* meanings from the Free Dictionary API (Wiktionary data) */
+const dictCache = new Map();
+async function fetchMeaning(w) {
+  if (dictCache.has(w)) return dictCache.get(w);
+  const tries = [w]; const stem = w.replace(/(ies)$/, 'y').replace(/(es|s|ed|ing|ly)$/, '');
+  if (stem !== w && stem.length > 2) tries.push(stem);
+  for (const q of tries) {
+    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(q), { signal: ctl.signal });
+      if (r.status === 404) continue;
+      if (!r.ok) throw new Error('http ' + r.status);
+      const j = await r.json(); dictCache.set(w, j); return j;
+    } finally { clearTimeout(to); }
+  }
+  dictCache.set(w, null); return null;
+}
+async function showMeaning(w) {
+  const box = $('#defBox'); if (!box) return;
+  box.hidden = false; box.innerHTML = `<p class="def-wait">Looking up “${esc(w)}”…</p>`;
+  if (!navigator.onLine) { box.innerHTML = `<p class="def-wait">You’re offline. Meanings need an internet connection.</p>`; return; }
+  try {
+    const j = await fetchMeaning(w);
+    if ($('#defBox') !== box) return;
+    if (!j || !j.length) { box.innerHTML = `<p class="def-wait">No meaning found for “${esc(w)}”.</p>`; return; }
+    const e0 = j[0]; const ph = e0.phonetic || (e0.phonetics || []).map(x => x.text).find(Boolean) || '';
+    const items = [];
+    j.forEach(e => (e.meanings || []).forEach(m => (m.definitions || []).slice(0, 2).forEach(d => items.length < 4 && items.push({ pos: m.partOfSpeech, d: d.definition, ex: d.example }))));
+    box.innerHTML = `<div class="def-head"><b>${esc(e0.word)}</b>${ph ? `<span>${esc(ph)}</span>` : ''}</div>
+      <ol>${items.map(x => `<li><i>${esc(x.pos || '')}</i> ${esc(x.d)}${x.ex ? `<em>“${esc(x.ex)}”</em>` : ''}</li>`).join('')}</ol>
+      <p class="def-src">From Wiktionary via the Free Dictionary API</p>`;
+  } catch (er) { if ($('#defBox') === box) box.innerHTML = `<p class="def-wait">Couldn’t reach the dictionary. Check your connection and try again.</p>`; }
+}
+
 /* chrome + gestures */
 const chromeOn = () => reader.classList.contains('chrome-on');
 function showChrome(on) { reader.classList.toggle('chrome-on', on); }
@@ -1272,8 +1470,12 @@ stage.addEventListener('pointerdown', e => {
   if (e.button > 0 || !R) return;
   ptr = { x: e.clientX, y: e.clientY, t: performance.now(), drag: false, id: e.pointerId };
   if (!R.pf && !R.anim) { try { stage.setPointerCapture(e.pointerId); } catch (er) {} }
+  const p0 = ptr; p0.lp = setTimeout(() => { if (ptr === p0) longPress(p0); }, 480);
 });
+stage.addEventListener('contextmenu', e => e.preventDefault());
 stage.addEventListener('pointermove', e => {
+  if (ptr && ptr.sel === true && R && R.sel && R.sel.extending) { const k = tokAt(e.clientX, e.clientY); if (k >= 0 && k !== R.sel.b) { R.sel.b = k; renderSel(); } return; }
+  if (ptr && !ptr.sel && Math.hypot(e.clientX - ptr.x, e.clientY - ptr.y) > 8) clearTimeout(ptr.lp);
   if (!ptr || R.pf || R.anim) return;
   const dx = e.clientX - ptr.x;
   if (!ptr.drag && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(e.clientY - ptr.y)) { ptr.drag = true; track.style.transition = 'none'; }
@@ -1282,6 +1484,13 @@ stage.addEventListener('pointermove', e => {
 stage.addEventListener('pointerup', e => {
   if (!ptr || !R) return;
   const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y, dt = performance.now() - ptr.t, p = ptr; ptr = null;
+  clearTimeout(p.lp);
+  if (p.sel) { if (p.sel === true && R.sel) openSelSheet(); return; }
+  if (R.sel && Math.hypot(dx, dy) < 10 && dt < 320) {
+    const k = tokAt(e.clientX, e.clientY);
+    if (k >= 0 && !R.sel.hid) { R.sel.b = k; renderSel(); openSelSheet(); } else closeSel();
+    return;
+  }
   if (p.drag) {
     const W = stage.clientWidth, v = dx / Math.max(dt, 1);
     if (dx < -W * 0.18 || (v < -0.45 && dx < -24)) slideTo(1);
@@ -1295,7 +1504,7 @@ stage.addEventListener('pointerup', e => {
     if (f < 0.3) prev(); else if (f > 0.7) next(); else showChrome(true);
   }
 });
-stage.addEventListener('pointercancel', () => { if (ptr && ptr.drag) { track.style.transition = 'transform .2s'; track.style.transform = 'translateX(0)'; } ptr = null; });
+stage.addEventListener('pointercancel', () => { if (ptr) clearTimeout(ptr.lp); if (ptr && ptr.drag) { track.style.transition = 'transform .2s'; track.style.transform = 'translateX(0)'; } ptr = null; });
 
 $('#seek').addEventListener('input', e => updateSeekLabel(+e.target.value));
 $('#seek').addEventListener('change', e => go(+e.target.value - 1));
@@ -1319,6 +1528,7 @@ document.addEventListener('keydown', e => {
   else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); prev(); }
   else if (e.key === 'ArrowDown' && S.guide !== 'off') { e.preventDefault(); stepGuide(1); }
   else if (e.key === 'ArrowUp' && S.guide !== 'off') { e.preventDefault(); stepGuide(-1); }
+  else if (e.key === 'Escape' && R.sel) closeSel();
   else if (e.key === 'Escape') { if (panelOpen()) closePanels(); else if (chromeOn()) showChrome(false); else closeReader(); }
 });
 
@@ -1340,9 +1550,20 @@ function renderBmPanel() {
   $('#bmPanel').innerHTML = `<div class="grab"></div><div class="rp-h">Bookmarks</div>
     ${items.length ? `<div class="bm-list">${items.map(o => `<div class="bm-item"><button class="bm-go" type="button" data-go="${o.i}"><b>Page ${o.i + 1} · ${Math.round((o.i + 1) / R.N * 100)}%</b><span>${esc(o.x.snip || '')}</span></button><button class="bm-del" type="button" data-del="${o.k}" aria-label="Delete bookmark on page ${o.i + 1}">×</button></div>`).join('')}</div>`
       : `<p class="bm-empty">No bookmarks yet. Tap the ribbon at the top while reading to mark a page.</p>`}
-    <button class="rb bm-add" type="button" data-addbm>${here ? 'Remove bookmark from this page' : `Bookmark this page (${R.cur + 1})`}</button>`;
+    <button class="rb bm-add" type="button" data-addbm>${here ? 'Remove bookmark from this page' : `Bookmark this page (${R.cur + 1})`}</button>
+    ${hlSection()}`;
+}
+function hlSection() {
+  const hl = (R.book.hl || []).map(h => ({ h, i: R.mode === 'reflow' ? indexForPos({ p: h.p0, w: h.w0 }) : null })).sort((a, c) => (a.h.p0 - c.h.p0) || (a.h.w0 - c.h.w0));
+  const head = `<div class="rp-h">Highlights &amp; notes</div>`;
+  if (!hl.length) return head + `<p class="bm-empty">Long-press any word to highlight it, add a note, or see its meaning.</p>`;
+  return head + `<div class="bm-list">${hl.map(o => `<div class="bm-item hl-item c-${o.h.color}"><button class="bm-go" type="button" ${o.i != null ? `data-go="${o.i}"` : 'disabled'}><b>${o.i != null ? `Page ${o.i + 1}` : 'Reflow to see the page'}${o.h.note ? ' · note' : ''}</b><span>${esc(o.h.text)}</span>${o.h.note ? `<span class="hl-note">${esc(o.h.note)}</span>` : ''}</button><button class="bm-del" type="button" data-hdel="${o.h.id}" aria-label="Delete highlight">×</button></div>`).join('')}</div>
+    <button class="rb bm-add" type="button" data-copyall>Copy all highlights &amp; notes</button>`;
 }
 $('#bmPanel').addEventListener('click', async e => {
+  const hd = e.target.closest('[data-hdel]'), ca = e.target.closest('[data-copyall]');
+  if (hd) { R.book.hl = R.book.hl.filter(x => x.id !== hd.dataset.hdel); await saveBook(R.book); refreshMarks(); renderBmPanel(); return; }
+  if (ca) { const t = R.book.title + '\n\n' + (R.book.hl || []).slice().sort((x, y) => (x.p0 - y.p0) || (x.w0 - y.w0)).map(h => '“' + h.text + '”' + (h.note ? '\nNote: ' + h.note : '')).join('\n\n'); copyText(t); return; }
   const g = e.target.closest('[data-go]'), d = e.target.closest('[data-del]'), a = e.target.closest('[data-addbm]');
   if (g) { closePanels(); showChrome(false); go(+g.dataset.go); }
   else if (d) { const i = bmIndex(R.book.bm[+d.dataset.del]); R.book.bm.splice(+d.dataset.del, 1); await saveBook(R.book); stage.querySelectorAll(`.pg[data-i="${i}"]`).forEach(el => el.classList.toggle('bm', hasBm(i))); $('#rMark').setAttribute('aria-pressed', hasBm(R.cur)); renderBmPanel(); }
@@ -1425,7 +1646,7 @@ function closePanels(quick) {
 }
 
 async function closeReader() {
-  if (R && R.pace) stopPace(); $('#pace').hidden = true;
+  if (R && R.sel) closeSel(); if (R && R.pace) stopPace(); $('#pace').hidden = true;
   if (!R) { reader.hidden = true; return; }
   clearTimeout(saveT);
   const b = R.book; if (R.N) b.pos = posForIndex(R.cur);
