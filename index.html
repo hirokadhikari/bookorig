@@ -221,6 +221,15 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 .hl-item .bm-go span{border-left:4px solid var(--hl-y);padding-left:8px}
 .hl-item.c-green .bm-go span{border-left-color:var(--hl-g)}.hl-item.c-blue .bm-go span{border-left-color:var(--hl-b)}.hl-item.c-pink .bm-go span{border-left-color:var(--hl-p)}
 .hl-note{font:14px/1.4 var(--f-sans)!important;-webkit-line-clamp:3!important;color:var(--r-soft)}
+.orig{position:absolute;inset:0;z-index:88;background:var(--r-desk);display:flex;flex-direction:column}
+.orig-bar{display:flex;align-items:center;gap:10px;padding:calc(8px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) 8px max(12px,env(safe-area-inset-left,0px));background:var(--r-bar);border-bottom:1px solid var(--r-line);color:var(--r-ink);font:700 15px var(--f-sans)}
+.orig-bar .rb{flex:0 0 auto;padding:0 16px;margin-left:auto;height:38px}
+.orig-hint{font:400 12px var(--f-sans);color:var(--r-soft)}
+.orig-scroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:12px 0 calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;gap:12px}
+.orig-scroll img{width:100%;max-width:900px;height:auto;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.18);cursor:zoom-in}
+.orig-scroll.zoom img{width:220%;max-width:none;cursor:zoom-out}
+.orig-scroll.zoom{align-items:flex-start}
+.orig-wait{color:var(--r-soft);font:14px var(--f-sans);padding:30px}
 .word-hi{position:absolute;z-index:51;pointer-events:none;border-radius:4px;background:color-mix(in srgb,var(--r-accent) 22%,transparent);box-shadow:inset 0 -3px 0 var(--r-accent);transition:left .12s,top .12s,width .12s}
 
 #rscrim{position:absolute;inset:0;z-index:70;background:rgba(0,0,0,.28)}
@@ -307,6 +316,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
   <div class="rbar" id="rtop">
     <button class="ib" id="rBack" type="button" aria-label="Back to shelf"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Shelf</button>
     <div class="r-title" id="rTitle"></div>
+    <button class="ib" id="rOrig" type="button" aria-label="View the original scanned page" hidden><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 3v4h4M9 12h6M9 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
     <button class="ib" id="rMark" type="button" aria-label="Bookmark this page" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
   </div>
   <div class="rbar" id="rbot">
@@ -324,6 +334,10 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
   <div class="rpanel" id="setPanel" role="dialog" aria-label="Display and focus settings"></div>
   <div class="rpanel" id="bmPanel" role="dialog" aria-label="Bookmarks and notes"></div>
   <div class="rpanel sel-sheet" id="selSheet" role="dialog" aria-label="Selected text"></div>
+  <div class="orig" id="origView" hidden role="dialog" aria-label="Original scanned page">
+    <div class="orig-bar"><span id="origTitle">Original page</span><span class="orig-hint">Tap the page to zoom</span><button class="rb" id="origClose" type="button">Close</button></div>
+    <div class="orig-scroll" id="origScroll"></div>
+  </div>
   <div id="rload" hidden>
     <div class="rl-card">
       <div class="rl-title" id="rlTitle">Opening</div>
@@ -345,7 +359,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const pdfjs = window.pdfjsLib || window['pdfjs-dist/build/pdf'] || null;
-const TEXT_VER = 4;
+const TEXT_VER = 5;
 
 /* ---------------- storage ---------------- */
 const STORES = ['books', 'files', 'texts'];
@@ -589,11 +603,144 @@ async function addPdf(file) {
   } finally { try { doc && doc.destroy(); } catch (e) {} }
 }
 
+/* ---------------- OCR repair for scanned books ---------------- */
+/* OCR repair. Rule: a token that is already an English word is never changed.
+   Only non-words are repaired, and only when the repair has exactly one possible answer. */
+const OCR = (() => {
+  const EXTRA = ['a', 'i', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'mondays', 'tuesdays', 'wednesdays', 'thursdays', 'fridays', 'saturdays', 'sundays', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december', 'ok', 'tv', 'tvs', 'mr', 'mrs', 'ms', 'dr', 'st', 'vs', 'etc', 'email', 'online', 'internet', 'website', 'english', 'american', 'america', 'god'];
+  const CONF = [['1', 'l'], ['1', 'i'], ['l', 'i'], ['i', 'l'], ['0', 'o'], ['5', 's'], ['rn', 'm'], ['m', 'rn'], ['cl', 'd'], ['d', 'cl'], ['li', 'h'], ['h', 'li'], ['vv', 'w'], ['ii', 'u'], ['!', 'l'], ['|', 'l'], ['I', 'l'], ['l', 'I'], ['d', 'a'], ['a', 'd'], ['c', 'e'], ['e', 'c'], ['n', 'u'], ['u', 'n'], ['f', 't'], ['t', 'f'], ['$', 's'], ['ri', 'n'], ['rn', 'n'], ['tl', 'd'], ['fi', 'h'], ['1n', 'm'], ['in', 'm'], ['i1', 'u']];
+  const SUFFIX = /(['’](s|t|re|ve|ll|d|m))$/i;
+  function makeDict(text) { const s = new Set(text.split(/\r?\n/)); EXTRA.forEach(w => s.add(w)); return s; }
+  const isWord = (dict, w) => { const l = w.toLowerCase(); if (dict.has(l)) return true; const m = l.match(SUFFIX); if (m) { const b = l.slice(0, -m[1].length); return dict.has(b) || /n$/.test(b) && dict.has(b.slice(0, -1)); } return /^[\p{L}]+-[\p{L}-]+$/u.test(l) && l.split('-').every(p => !p || dict.has(p)); };
+  // split a token into leading punctuation, core, trailing punctuation
+  const parts = t => { const m = t.match(/^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/u); return m ? [m[1], m[2], m[3]] : ['', t, '']; };
+  const upperShare = s => { const L = s.replace(/[^\p{L}]/gu, ''); return L ? L.replace(/[^\p{Lu}]/gu, '').length / L.length : 0; };
+  const caseLike = (src, w) => src.length > 1 && upperShare(src) >= 0.6 ? w.toUpperCase() : (/\p{Lu}/u.test(src[0]) ? w[0].toUpperCase() + w.slice(1) : w);
+  // how much of the original survives in the candidate (in order)
+  const lcs = (a, b) => { const d = Array(b.length + 1).fill(0); for (let i = 1; i <= a.length; i++) { let prev = 0; for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = a[i - 1] === b[j - 1] ? prev + 1 : Math.max(d[j], d[j - 1]); prev = t; } } return d[b.length]; };
+  // candidates one look-alike swap away, then two swaps away (fewest swaps wins)
+  function candidateLevels(core) {
+    const seen = new Set([core]), levels = []; let frontier = [core];
+    for (let depth = 0; depth < 2; depth++) {
+      const next = [];
+      for (const s of frontier) for (const [a, b] of CONF) {
+        let i = s.indexOf(a);
+        while (i >= 0) { const c = s.slice(0, i) + b + s.slice(i + a.length); if (!seen.has(c)) { seen.add(c); next.push(c); } i = s.indexOf(a, i + 1); }
+      }
+      levels.push(next); frontier = next;
+    }
+    return levels;
+  }
+  const looksLikeName = core => /^\p{Lu}/u.test(core) && /[aeiouy]/i.test(core) && !/[0-9!|$]/.test(core);
+  function fixToken(core, dict, ctx) {
+    if (!core || isWord(dict, core) || /^[\d.,:/%-]+$/.test(core)) return null;
+    if (core.includes('-')) { // fix each part of a hyphenated word on its own
+      const ps = core.split('-'), fx = ps.map(p => fixToken(p, dict, ctx));
+      return fx.some(Boolean) ? ps.map((p, k) => fx[k] || p).join('-') : null;
+    }
+    if (ctx.protect.has(core.toLowerCase())) return null;
+    if (/['’]/.test(core) && !/[0-9!|$]/.test(core)) return null; // contractions: only fix obvious digit misreads
+    if (looksLikeName(core)) return null; // a capitalised name we don't know: leave it
+    const odd = /[0-9!|$]/.test(core) || !/[aeiouy]/i.test(core); // digits, symbols or no vowels: clearly misread
+    if (core.length < (odd ? 3 : 5)) return null; // short fragments are too ambiguous to guess
+    const low = core.toLowerCase();
+    // a guess must be a word this book already uses, unless the misread is long enough to be unambiguous
+    const trusted = w => (ctx.freq.get(w) || 0) >= 2 || core.length >= 8 || (/[0-9]/.test(core) && core.length >= 5);
+    const levels = candidateLevels(core);
+    if (!/[0-9!|$]/.test(core) && core.length < 8) levels.length = 1; // plain-letter misreads: one swap only
+    for (const level of levels) {
+      const hits = new Set();
+      for (const c of level) { const cl = c.toLowerCase(); if (/^[\p{L}'’-]+$/u.test(c) && isWord(dict, c) && lcs(low, cl) / Math.max(low.length, cl.length) >= 0.6) hits.add(cl); }
+      if (hits.size === 1) { const h = [...hits][0]; return trusted(h) ? caseLike(core, h) : null; }
+      if (hits.size > 1) { // several possible words: take one only if this book clearly uses it far more
+        const ranked = [...hits].map(h => [h, ctx.freq.get(h) || 0]).sort((a, b) => b[1] - a[1]);
+        if (ranked[0][1] >= 5 && ranked[0][1] >= 5 * Math.max(1, ranked[1][1])) return caseLike(core, ranked[0][0]);
+        return null;
+      }
+    }
+    return null;
+  }
+  // "T h e A u d i o" -> "The Audio..." by splitting the joined letters into dictionary words
+  function segment(s, dict) {
+    const n = s.length, best = new Array(n + 1).fill(null); best[0] = [];
+    for (let i = 0; i < n; i++) { if (!best[i]) continue; for (let j = Math.min(n, i + 20); j > i; j--) { const w = s.slice(i, j); if ((j - i > 1 || /^[ai]$/i.test(w)) && isWord(dict, w)) { const cand = best[i].concat(w); if (!best[j] || cand.length < best[j].length) best[j] = cand; } } }
+    return best[n];
+  }
+  const JUNK = { test: t => /^[^\p{L}\p{N}]+$/u.test(t) && (t.length >= 3 || /[~_=<>|\\^`·•¬{}#@]/.test(t)) }, OKPUNCT = /^(\.{3}|…|[—–-]{1,3}|\*{3}|["“”'’()]+[.,;:!?]*)$/u;
+  function repairText(text, dict, ctx) {
+    const protect = ctx.protect;
+    let toks = text.split(' ').filter(t => t !== '');
+    toks = toks.filter(t => !(JUNK.test(t) && !OKPUNCT.test(t)));
+    // spaced-out letters
+    const out = [];
+    for (let i = 0; i < toks.length;) {
+      let j = i, tail = '';
+      while (j < toks.length) { const [a, c, z] = parts(toks[j]); if (!/^\p{L}$/u.test(c) || (a && j > i)) break; j++; if (z) { tail = z; break; } }
+      if (j - i >= 4) {
+        const lead = parts(toks[i])[0], letters = toks.slice(i, j).map(t => parts(t)[1]).join(''), seg = segment(letters, dict);
+        const SHORT = /^(a|i|an|of|to|in|on|at|is|it|be|we|he|me|my|by|or|as|so|up|us|do|go|no|if|am)$/i;
+        if (seg && seg.every(w => SHORT.test(w) || (w.length > 2 && (ctx.freq.get(w.toLowerCase()) || 0) >= 1))) { seg.forEach((w, k) => out.push((k === 0 ? lead : '') + w + (k === seg.length - 1 ? tail : ''))); i = j; continue; }
+      }
+      out.push(toks[i]); i++;
+    }
+    toks = out;
+    // words broken by stray spaces: "Ack nowledgmen ts"
+    const res = [];
+    for (let i = 0; i < toks.length;) {
+      let done = false;
+      for (let n = Math.min(4, toks.length - i); n >= 2 && !done; n--) {
+        const grp = toks.slice(i, i + n), ps = grp.map(parts);
+        if (ps.some((p, k) => (k > 0 && p[0]) || (k < n - 1 && p[2]) || !/^\p{L}+$/u.test(p[1]) || /['’]/.test(p[0]))) continue;
+        const known = ps.map(p => isWord(dict, p[1]) || protect.has(p[1].toLowerCase()));
+        const nonWords = known.filter(k => !k).length;
+        if (!nonWords || nonWords < n - nonWords) continue;
+        const caps = ps.map(p => p[1].length > 1 && upperShare(p[1]) === 1), lower = ps.map(p => /\p{Ll}/u.test(p[1]));
+        if (caps.some(Boolean) && lower.some(Boolean)) continue; // "INC U sed": mixed case pieces are different words
+        const joined = ps.map(p => p[1]).join('');
+        // a real word in front may only be glued on when the broken piece at the end is substantial: "trip p ing" yes, "was h" no
+        const inBook = (ctx.freq.get(joined.toLowerCase()) || 0) >= 1;
+        if (joined.length < 3) continue;
+        // the safest repairs only: short results, or a lone letter glued to a word, must already appear in this book
+        if ((joined.length <= 5 || ps.every((p, k) => known[k] || p[1].length === 1)) && !inBook) continue;
+        if (known[0]) {
+          const tailBroken = !known[n - 1] && (ps[n - 1][1].length >= 2 || n >= 3);
+          const seenInBook = (ctx.freq.get(joined.toLowerCase()) || 0) >= 1;
+          if (!tailBroken || joined.length < 4 || !(seenInBook || joined.length >= 7)) continue;
+        }
+        if (isWord(dict, joined)) { res.push(ps[0][0] + joined + ps[n - 1][2]); i += n; done = true; }
+      }
+      if (!done) { res.push(toks[i]); i++; }
+    }
+    // look-alike letters: "1esson" -> "lesson"
+    return res.map(t => { const [a, core, z] = parts(t); const f = fixToken(core, dict, ctx); return f ? a + f + z : t; }).join(' ');
+  }
+  function unknownRatio(text, dict, ctx) {
+    const protect = ctx.protect;
+    const toks = text.split(/\s+/).map(t => parts(t)[1]).filter(c => /\p{L}/u.test(c));
+    if (toks.length < 15) return 0;
+    const bad = toks.filter(c => !isWord(dict, c) && !protect.has(c.toLowerCase()) && !looksLikeName(c)).length;
+    return bad / toks.length;
+  }
+  // words this book uses 3+ times are treated as real (names, made-up words), and their counts break ties
+  function bookContext(texts) {
+    const freq = new Map();
+    texts.forEach(t => t.split(/\s+/).forEach(w => { const c = parts(w)[1].toLowerCase(); if (c.length > 1) freq.set(c, (freq.get(c) || 0) + 1); }));
+    const protect = new Set(); freq.forEach((n, w) => { if (n >= 3) protect.add(w); });
+    return { freq, protect };
+  }
+  return { makeDict, repairText, unknownRatio, bookContext, isWord };
+})();
+let dictP = null;
+function loadDict() {
+  if (!dictP) dictP = fetch('dict/words.txt').then(r => r.ok ? r.text() : Promise.reject(new Error('dict'))).then(t => OCR.makeDict(t)).catch(() => { dictP = null; return null; });
+  return dictP;
+}
+
 /* ---------------- text extraction ---------------- */
 const LIG = { 'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬀ': 'ff', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'st', 'ﬆ': 'st' };
 const clean = s => s.replace(/[ﬁﬂﬀﬃﬄﬅﬆ]/g, c => LIG[c]).replace(/­/g, '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/\s+/g, ' ').replace(/(\w) ([.,;:!?])(?= |$)/g, '$1$2').trim();
 const median = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
-async function extractParas(doc, onProg) {
+async function extractParas(doc, onProg, dict) {
   const N = doc.numPages, pages = [];
   for (let i = 1; i <= N; i++) {
     const page = await doc.getPage(i);
@@ -631,8 +778,18 @@ async function extractParas(doc, onProg) {
   pages.forEach(ls => { for (let i = 1; i < ls.length; i++) { const g = ls[i - 1].y - ls[i].y; if (g > 0 && g < bodyFs * 3 && Math.abs(ls[i].fs - bodyFs) < bodyFs * 0.15) gaps.push(g); } });
   const L = median(gaps) || bodyFs * 1.25;
   const chapterRe = /^(chapter|part|book|prologue|epilogue|introduction|preface|foreword|afterword|contents|acknowledg|appendix)\b/i;
+  // pages whose text is mostly unreadable are shown as the original scan instead
+  let ctx = null; const garbled = new Set();
+  if (dict) {
+    ctx = OCR.bookContext(pages.map(ls => ls.map(l => l.t).join(' ')));
+    pages.forEach((ls, pi) => {
+      const t = ls.map(l => l.t).join(' ');
+      if (t.split(' ').length >= 40 && OCR.unknownRatio(OCR.repairText(t, dict, ctx), dict, ctx) >= 0.2) garbled.add(pi);
+    });
+  }
   const paras = []; let cp = null, last = null;
   pages.forEach((ls, pi) => {
+    if (garbled.has(pi)) { paras.push([3, '', pi]); cp = null; last = null; return; }
     const body = ls.filter(l => Math.abs(l.fs - bodyFs) < bodyFs * 0.15);
     const xs = body.map(l => Math.round(l.x));
     const left = xs.length ? (() => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length * 0.1)]; })() : 0;
@@ -658,7 +815,8 @@ async function extractParas(doc, onProg) {
       prev = ln; last = { xe: ln.xe, t: ln.t, right };
     }
   });
-  return paras.map(p => { if (p[0] > 0 && p[1].length > 220) p[0] = 0; return p; }).filter(p => p[1].trim());
+  if (dict) paras.forEach(p => { if (p[0] < 3) p[1] = OCR.repairText(p[1], dict, ctx); });
+  return paras.map(p => { if (p[0] > 0 && p[0] < 3 && p[1].length > 220) p[0] = 0; return p; }).filter(p => p[0] === 3 || p[1].trim());
 }
 
 /* ---------------- reader ---------------- */
@@ -723,10 +881,12 @@ async function ensureParas() {
   if (R.paras) return;
   const id = R.book.id;
   let cache = null; try { cache = await dbGet('texts', id); } catch (e) {}
-  if (cache && cache.v === TEXT_VER) R.paras = cache.p;
+  if (cache && cache.v === TEXT_VER && !(cache.nd && navigator.onLine)) R.paras = cache.p;
   else {
-    R.paras = await extractParas(R.doc, (i, n) => setLoading('Preparing your book', `Reading the text · page ${i} of ${n}`, i / n));
-    try { await dbPut('texts', { id, v: TEXT_VER, p: R.paras }); } catch (e) {}
+    setLoading('Preparing your book', 'Getting the word list', null);
+    const dict = await loadDict();
+    R.paras = await extractParas(R.doc, (i, n) => setLoading('Preparing your book', `Reading the text · page ${i} of ${n}`, i / n), dict);
+    try { await dbPut('texts', { id, v: TEXT_VER, p: R.paras, nd: !dict }); } catch (e) {}
   }
   if (R.paras.length < 2) { R.book.scanned = true; R.mode = 'pages'; saveBook(R.book); }
 }
@@ -773,6 +933,10 @@ async function paginate(r, gen, onProg) {
   let prevType = 2, t0 = performance.now();
   for (let i = 0; i < paras.length; i++) {
     const [type, text] = paras[i];
+    if (type === 3) { // scanned page shown as an image
+      if (items.length) { pages.push({ h: items.map(x => x.h).join(''), sp: start.p, sw: start.w }); items = []; m.innerHTML = ''; }
+      pages.push({ h: '', img: paras[i][2], sp: i, sw: 0 }); start = { p: i + 1, w: 0 }; prevType = 2; continue;
+    }
     if (type === 2 && items.length) flush({ p: i, w: 0 });
     const words = text.split(' ');
     let w0 = 0;
@@ -832,6 +996,7 @@ function posForIndex(i) {
   return { p, w: 0, pg: i };
 }
 function snippet(i) {
+  if (R.mode === 'reflow' && R.pages[i].img != null) return `Scanned page ${R.pages[i].img + 1}`;
   if (R.mode === 'reflow') return R.pages[i].h.replace(/<\/(p|h2)>/g, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').slice(0, 120);
   if (R.paras) { const k = R.paras.findIndex(x => x[2] === i); if (k >= 0) return R.paras[k][1].slice(0, 120); }
   return `Page ${i + 1}`;
@@ -881,7 +1046,13 @@ function pageEl(i) {
   const el = document.createElement('div');
   el.className = 'pg' + (hasBm(i) ? ' bm' : ''); el.dataset.i = i;
   const foot = `<div class="pg-foot"><span class="pf-t">${esc(R.book.title)}</span><span>${i + 1}</span></div><div class="ribbon"></div>`;
-  if (R.mode === 'reflow') { el.innerHTML = `<div class="pg-body"><div class="pg-content" lang="en">${R.pages[i].h}</div></div>${foot}`; decoratePage(el, i); }
+  if (R.mode === 'reflow' && R.pages[i].img != null) {
+    const pg = R.pages[i].img;
+    el.classList.add('pg-img');
+    el.innerHTML = `<div class="pg-wait">Scanned page ${pg + 1}</div><img alt="Scanned page ${pg + 1}" hidden><div class="pg-foot"><span class="pf-t">Shown as scanned: the text on this page is unreadable</span><span>${i + 1}</span></div><div class="ribbon"></div>`;
+    const img = el.querySelector('img');
+    loadImg(pg).then(url => { if (url) { img.src = url; img.hidden = false; el.querySelector('.pg-wait').hidden = true; } });
+  } else if (R.mode === 'reflow') { el.innerHTML = `<div class="pg-body"><div class="pg-content" lang="en">${R.pages[i].h}</div></div>${foot}`; decoratePage(el, i); }
   else {
     el.classList.add('pg-img');
     el.innerHTML = `<div class="pg-wait">Page ${i + 1}</div><img alt="Page ${i + 1}" hidden>${foot}`;
@@ -913,6 +1084,50 @@ function loadImg(i) {
   if (r.img.size > 18) { const k = r.img.keys().next().value; const old = r.img.get(k); r.img.delete(k); old.then(u => u && setTimeout(() => URL.revokeObjectURL(u), 4000)); }
   return p;
 }
+async function renderSharp(pg) {
+  const page = await R.doc.getPage(pg + 1);
+  const vp1 = page.getViewport({ scale: 1 });
+  const w = Math.min(2400, Math.round(Math.max(stage.clientWidth, 400) * Math.min(window.devicePixelRatio || 1, 2) * 1.6));
+  const vp = page.getViewport({ scale: w / vp1.width });
+  const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise; page.cleanup();
+  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.88));
+  return blob ? URL.createObjectURL(blob) : null;
+}
+// which scanned pages the reflowed page on screen came from
+function sourcePages(i) {
+  const pgs = R.pages, paras = R.paras;
+  if (pgs[i].img != null) return [pgs[i].img];
+  const a = (paras[pgs[i].sp] || [0, '', 0])[2];
+  let endP = i + 1 < pgs.length ? (pgs[i + 1].sw > 0 ? pgs[i + 1].sp : pgs[i + 1].sp - 1) : paras.length - 1;
+  endP = Math.max(pgs[i].sp, Math.min(endP, paras.length - 1));
+  const b = (paras[endP] || [0, '', a])[2];
+  const out = []; for (let k = a; k <= Math.min(b, a + 2); k++) out.push(k); return out;
+}
+let origUrls = [];
+async function openOriginal() {
+  if (!R || !R.doc || R.mode !== 'reflow') return;
+  if (R.pace && R.pace.on) { pausePace(); R.pace.resume = true; }
+  const pgs = sourcePages(R.cur), box = $('#origScroll');
+  $('#origTitle').textContent = pgs.length > 1 ? `Original pages ${pgs[0] + 1}–${pgs[pgs.length - 1] + 1}` : `Original page ${pgs[0] + 1}`;
+  box.classList.remove('zoom'); box.innerHTML = '<p class="orig-wait">Loading the scan…</p>';
+  $('#origView').hidden = false; showChrome(false);
+  const urls = [];
+  for (const pg of pgs) { try { const u = await renderSharp(pg); if (u) urls.push(u); } catch (e) {} }
+  if ($('#origView').hidden) { urls.forEach(u => URL.revokeObjectURL(u)); return; }
+  origUrls = urls;
+  box.innerHTML = urls.length ? urls.map((u, k) => `<img src="${u}" alt="Original page ${pgs[k] + 1}">`).join('') : '<p class="orig-wait">Couldn’t load the scan.</p>';
+}
+function closeOriginal() {
+  $('#origView').hidden = true; $('#origScroll').innerHTML = '';
+  origUrls.forEach(u => URL.revokeObjectURL(u)); origUrls = [];
+  if (R && R.pace && R.pace.resume) { R.pace.resume = false; if (R.pace.active) resumePace(300); }
+}
+$('#rOrig').addEventListener('click', openOriginal);
+$('#origClose').addEventListener('click', closeOriginal);
+$('#origScroll').addEventListener('click', e => { if (e.target.tagName === 'IMG') $('#origScroll').classList.toggle('zoom'); });
+
 function prefetch(i) { if (R && R.mode === 'pages') [i + 1, i + 2, i - 1].forEach(k => { if (k >= 0 && k < R.N) loadImg(k); }); }
 
 /* curl view */
@@ -1021,6 +1236,7 @@ function afterShown(i) {
   clearTimeout(saveT); saveT = setTimeout(() => saveBook(b), 400);
   const seek = $('#seek'); seek.max = R.N; seek.value = i + 1;
   updateSeekLabel(i + 1);
+  $('#rOrig').hidden = !(R.doc && R.mode === 'reflow');
   const mk = hasBm(i); $('#rMark').setAttribute('aria-pressed', mk); $('#rMark').setAttribute('aria-label', mk ? 'Remove bookmark' : 'Bookmark this page');
   if (R.pendingGuide === 'bottom') { R.guideLine = guideMetrics().lines - 1; } else R.guideLine = 0;
   R.pendingGuide = null;
@@ -1207,6 +1423,7 @@ function setRate(d) { S.rate = Math.round(Math.max(0.5, Math.min(2.5, S.rate + d
 function paceOnNewPage() {
   if (!pacing() || !R.pace.on) return;
   if (R.pace.mode === 'speak') { const gen = R.sp ? R.sp.gen : 0; setTimeout(() => { if (isSpeak() && R.pace.on && (!R.sp || R.sp.gen === gen)) speakFromLine(R.guideLine); }, 260); }
+  else if (!curMap().t.length) { clearTimeout(R.pace.t); R.pace.t = setTimeout(() => { if (pacing() && R.pace.on) turnForPacer(); }, 8000); }
   else schedulePace(lineDur(R.guideLine) + 150);
 }
 
@@ -1552,6 +1769,7 @@ document.addEventListener('keydown', e => {
   else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); prev(); }
   else if (e.key === 'ArrowDown' && S.guide !== 'off') { e.preventDefault(); stepGuide(1); }
   else if (e.key === 'ArrowUp' && S.guide !== 'off') { e.preventDefault(); stepGuide(-1); }
+  else if (e.key === 'Escape' && !$('#origView').hidden) closeOriginal();
   else if (e.key === 'Escape' && R.sel) closeSel();
   else if (e.key === 'Escape') { if (panelOpen()) closePanels(); else if (chromeOn()) showChrome(false); else closeReader(); }
 });
@@ -1671,6 +1889,7 @@ function closePanels(quick) {
 
 async function closeReader(fromBack) {
   if (fromBack !== true) trimBackSteps();
+  if (!$('#origView').hidden) closeOriginal();
   if (R && R.sel) closeSel(); if (R && R.pace) stopPace(); $('#pace').hidden = true;
   if (!R) { reader.hidden = true; return; }
   clearTimeout(saveT);
@@ -1761,6 +1980,7 @@ function guardBack() {
     if (popIgnore) { popIgnore = 0; return; }
     const n = backDepth();
     if (!reader.hidden && R) {
+      if (!$('#origView').hidden) return closeOriginal();
       if (R.sel) return closeSel();
       if (panelOpen()) { closePanels(); showChrome(false); return; }
       if (chromeOn()) return showChrome(false);

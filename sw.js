@@ -1,6 +1,6 @@
 // Bookorig service worker: works offline, receives PDFs shared from other apps.
 // Bump VERSION whenever the files change so phones pick up the update.
-const VERSION = '7';
+const VERSION = '8';
 const SHELL = 'bookorig-shell-' + VERSION;
 const STATIC = 'bookorig-static';
 const SHARE = 'bookorig-share';
@@ -38,7 +38,7 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
   // Libraries and fonts never change for a given file name: serve from cache first.
-  if (/\/(vendor|fonts|icons)\//.test(url.pathname)) {
+  if (/\/(vendor|fonts|icons|dict)\//.test(url.pathname)) {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(STATIC).then(c => c.put(req, copy)); }
       return res;

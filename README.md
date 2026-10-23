@@ -66,7 +66,7 @@ There are light, sepia and dark themes, serif or sans text, and a plain slide in
 
 Books are saved in Chrome's storage on that phone. They don't sync between devices, and clearing site data for this site deletes them, so keep the PDFs somewhere else as well.
 
-Reflow is only as good as the text inside the PDF. Scans with rough OCR come out messy, especially contents and copyright pages. Switch that book to Original when it happens.
+Scanned books come with text from the scanner's OCR, and that text can be rough. Bookorig cleans it up carefully. A word that is already a real English word is never changed, however rare or advanced it is. Only tokens that aren't words at all get repaired, and only when there is exactly one sensible fix: look-alike letters ("1esson" becomes "lesson", "rnove" becomes "move"), words broken by stray spaces ("Ack nowledgmen ts" becomes "Acknowledgments"), spaced-out headings and junk symbols. Names the book uses again and again are left alone. Pages that are still mostly unreadable appear as the original scan, and the page icon at the top shows the scan of any page so you can check it against the text.
 
 Sharing a PDF to Bookorig needs Android and the installed app.
 
@@ -84,4 +84,4 @@ Then open http://localhost:8000/. If you change anything, bump `VERSION` in `sw.
 
 ## Credits
 
-PDF reading by [pdf.js](https://github.com/mozilla/pdf.js) and the page curl by [StPageFlip](https://github.com/Nodlik/StPageFlip). Word meanings come from [Wiktionary](https://en.wiktionary.org/) (CC BY-SA). Fonts are Literata, Atkinson Hyperlegible, Caveat and Kalam. The sample book is the first chapter of Alice's Adventures in Wonderland (1865, public domain). Licenses are in `vendor/LICENSES.txt`.
+PDF reading by [pdf.js](https://github.com/mozilla/pdf.js) and the page curl by [StPageFlip](https://github.com/Nodlik/StPageFlip). Word meanings come from [Wiktionary](https://en.wiktionary.org/) (CC BY-SA). The English word list used for OCR repair is from [word-list](https://github.com/sindresorhus/word-list) (MIT). Fonts are Literata, Atkinson Hyperlegible, Caveat and Kalam. The sample book is the first chapter of Alice's Adventures in Wonderland (1865, public domain). Licenses are in `vendor/LICENSES.txt`.
