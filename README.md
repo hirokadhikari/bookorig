@@ -76,4 +76,4 @@ Then open http://localhost:8000/. If you change anything, bump `VERSION` in `sw.
 
 ## Credits
 
-PDF reading by [pdf.js](https://github.com/mozilla/pdf.js) and the page curl by [StPageFlip](https://github.com/Nodlik/StPageFlip). Fonts are Literata, Atkinson Hyperlegible, Caveat and Kalam. The sample book is the first chapter of Alice's Adventures in Wonderland (1865, public domain). Licenses are in `vendor/LICENSES.txt`.
+PDF reading by [pdf.js](https://github.com/mozilla/pdf.js) and the page curl by [StPageFlip](https://github.com/Nodlik/StPageFlip). Word meanings come from [Wiktionary](https://en.wiktionary.org/) (CC BY-SA). Fonts are Literata, Atkinson Hyperlegible, Caveat and Kalam. The sample book is the first chapter of Alice's Adventures in Wonderland (1865, public domain). Licenses are in `vendor/LICENSES.txt`.

@@ -217,6 +217,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 .def em{display:block;color:var(--r-soft);font-style:italic;font-family:var(--f-book)}
 .def-wait{margin:0;color:var(--r-soft)}
 .def-src{margin:8px 0 0;font-size:11px;color:var(--r-soft)}
+.def-src a{color:inherit}
 .hl-item .bm-go span{border-left:4px solid var(--hl-y);padding-left:8px}
 .hl-item.c-green .bm-go span{border-left-color:var(--hl-g)}.hl-item.c-blue .bm-go span{border-left-color:var(--hl-b)}.hl-item.c-pink .bm-go span{border-left-color:var(--hl-p)}
 .hl-note{font:14px/1.4 var(--f-sans)!important;-webkit-line-clamp:3!important;color:var(--r-soft)}
@@ -1428,37 +1429,59 @@ function copyText(t) {
   function fallback() { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (er) { toast('Couldn’t copy on this browser.'); } ta.remove(); }
 }
 
-/* meanings from the Free Dictionary API (Wiktionary data) */
+/* meanings from Wiktionary (CC BY-SA), which allows lookups from other websites */
 const dictCache = new Map();
+const htmlText = h => {
+  const d = new DOMParser().parseFromString('<div>' + (h || '') + '</div>', 'text/html');
+  d.querySelectorAll('style, sup, ol, ul, .reference').forEach(n => n.remove());
+  return (d.body.textContent || '').replace(/\s+/g, ' ').trim();
+};
+async function wikt(q) {
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 9000);
+  try {
+    const r = await fetch('https://en.wiktionary.org/api/rest_v1/page/definition/' + encodeURIComponent(q), { signal: ctl.signal });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error('http ' + r.status);
+    const j = await r.json();
+    const items = [];
+    (j.en || []).forEach(e => {
+      let n = 0;
+      (e.definitions || []).forEach(d => {
+        const text = htmlText(d.definition); if (!text || n >= 2 || items.length >= 4) return;
+        const base = /form-of-definition/.test(d.definition || '') ? (new DOMParser().parseFromString(d.definition, 'text/html').querySelector('.form-of-definition-link a, i.mention a') || {}).textContent : null;
+        const ex = (d.examples || []).map(htmlText).find(x => x && x.length < 160);
+        items.push({ pos: e.partOfSpeech, d: text, ex, base }); n++;
+      });
+    });
+    return items.length ? items : null;
+  } finally { clearTimeout(to); }
+}
 async function fetchMeaning(w) {
   if (dictCache.has(w)) return dictCache.get(w);
   const tries = [w]; const stem = w.replace(/(ies)$/, 'y').replace(/(es|s|ed|ing|ly)$/, '');
   if (stem !== w && stem.length > 2) tries.push(stem);
-  for (const q of tries) {
-    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 8000);
-    try {
-      const r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(q), { signal: ctl.signal });
-      if (r.status === 404) continue;
-      if (!r.ok) throw new Error('http ' + r.status);
-      const j = await r.json(); dictCache.set(w, j); return j;
-    } finally { clearTimeout(to); }
-  }
-  dictCache.set(w, null); return null;
+  let res = null, word = w;
+  for (const q of tries) { res = await wikt(q); if (res) { word = q; break; } }
+  // "running" is listed as a form of "run": show what "run" means too
+  const base = res && res.find(x => x.base) ? res.find(x => x.base).base : null;
+  let baseRes = null;
+  if (base && base !== word) { try { baseRes = await wikt(base); } catch (e) {} }
+  const out = res ? { word, items: res, base, baseItems: baseRes ? baseRes.filter(x => !x.base).slice(0, 2) : [] } : null;
+  dictCache.set(w, out); return out;
 }
 async function showMeaning(w) {
   const box = $('#defBox'); if (!box) return;
   box.hidden = false; box.innerHTML = `<p class="def-wait">Looking up “${esc(w)}”…</p>`;
   if (!navigator.onLine) { box.innerHTML = `<p class="def-wait">You’re offline. Meanings need an internet connection.</p>`; return; }
   try {
-    const j = await fetchMeaning(w);
+    const m = await fetchMeaning(w);
     if ($('#defBox') !== box) return;
-    if (!j || !j.length) { box.innerHTML = `<p class="def-wait">No meaning found for “${esc(w)}”.</p>`; return; }
-    const e0 = j[0]; const ph = e0.phonetic || (e0.phonetics || []).map(x => x.text).find(Boolean) || '';
-    const items = [];
-    j.forEach(e => (e.meanings || []).forEach(m => (m.definitions || []).slice(0, 2).forEach(d => items.length < 4 && items.push({ pos: m.partOfSpeech, d: d.definition, ex: d.example }))));
-    box.innerHTML = `<div class="def-head"><b>${esc(e0.word)}</b>${ph ? `<span>${esc(ph)}</span>` : ''}</div>
-      <ol>${items.map(x => `<li><i>${esc(x.pos || '')}</i> ${esc(x.d)}${x.ex ? `<em>“${esc(x.ex)}”</em>` : ''}</li>`).join('')}</ol>
-      <p class="def-src">From Wiktionary via the Free Dictionary API</p>`;
+    if (!m) { box.innerHTML = `<p class="def-wait">No meaning found for “${esc(w)}”.</p>`; return; }
+    const li = x => `<li><i>${esc((x.pos || '').toLowerCase())}</i> ${esc(x.d)}${x.ex ? `<em>“${esc(x.ex)}”</em>` : ''}</li>`;
+    box.innerHTML = `<div class="def-head"><b>${esc(m.word)}</b></div>
+      <ol>${m.items.filter(x => !x.base || !m.baseItems.length).map(li).join('')}${m.baseItems.length ? m.items.filter(x => x.base).map(li).join('') : ''}</ol>
+      ${m.baseItems.length ? `<div class="def-head" style="margin-top:8px"><b>${esc(m.base)}</b></div><ol>${m.baseItems.map(li).join('')}</ol>` : ''}
+      <p class="def-src">From <a href="https://en.wiktionary.org/wiki/${encodeURIComponent(m.word)}" target="_blank" rel="noopener">Wiktionary</a> (CC BY-SA)</p>`;
   } catch (er) { if ($('#defBox') === box) box.innerHTML = `<p class="def-wait">Couldn’t reach the dictionary. Check your connection and try again.</p>`; }
 }
 
