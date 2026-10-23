@@ -1,0 +1,4 @@
+Third-party code and fonts bundled with Bookorig:
+- pdf.js 3.11.174 (Mozilla) — Apache License 2.0 — https://github.com/mozilla/pdf.js
+- StPageFlip / page-flip 2.0.7 — MIT License — https://github.com/Nodlik/StPageFlip
+- Fonts in /fonts (Literata, Atkinson Hyperlegible, Caveat, Kalam) — SIL Open Font License 1.1, via Fontsource
