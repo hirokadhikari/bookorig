@@ -189,6 +189,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 .pace button:active{background:rgba(127,127,127,.25)}
 .pace .pv{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;white-space:nowrap}
 .chrome-on .pace{opacity:0;pointer-events:none}
+.word-hi{position:absolute;z-index:51;pointer-events:none;border-radius:4px;background:color-mix(in srgb,var(--r-accent) 22%,transparent);box-shadow:inset 0 -3px 0 var(--r-accent);transition:left .12s,top .12s,width .12s}
 
 #rscrim{position:absolute;inset:0;z-index:70;background:rgba(0,0,0,.28)}
 .rpanel{position:absolute;left:0;right:0;bottom:0;z-index:80;max-width:620px;margin:0 auto;max-height:80%;overflow-y:auto;background:var(--r-page);color:var(--r-ink);border-radius:20px 20px 0 0;box-shadow:0 -12px 40px rgba(0,0,0,.25);padding:10px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));transform:translateY(105%);transition:transform .32s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;gap:6px}
@@ -202,6 +203,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 .seg button{height:36px;min-width:44px;padding:0 12px;border:0;border-radius:18px;background:transparent;color:var(--r-ink);font:600 13px var(--f-sans)}
 .seg button[aria-pressed="true"]{background:var(--r-ink);color:var(--r-page)}
 .seg button:disabled{opacity:.35;cursor:not-allowed}
+.vsel{max-width:56%;height:40px;border-radius:12px;border:1px solid var(--r-line);background:var(--r-page);color:var(--r-ink);font:14px var(--f-sans);padding:0 8px}
 .size-val{min-width:40px;text-align:center;font:700 15px var(--f-sans);font-variant-numeric:tabular-nums;align-self:center}
 .sw{width:30px;height:30px;border-radius:50%;border:1px solid var(--r-line);display:inline-block;vertical-align:middle}
 .bm-list{display:flex;flex-direction:column}
@@ -280,7 +282,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
       <input type="range" id="seek" min="1" max="1" value="1" aria-label="Go to page">
       <div class="seek-lab"><span id="seekPage">Page 1 of 1</span><span id="seekPct">0%</span></div>
     </div>
-    <div class="bot-btns"><button class="rb solid" id="rPaceBtn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>Auto-pace</button></div>
+    <div class="bot-btns"><button class="rb solid" id="rPaceBtn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>Auto-pace</button><button class="rb solid" id="rSpeakBtn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Read aloud</button></div>
     <div class="bot-btns">
       <button class="rb" id="rBmBtn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z" fill="currentColor"/></svg>Bookmarks</button>
       <button class="rb" id="rSetBtn" type="button"><span style="font-family:var(--f-book);font-size:17px">Aa</span>Display &amp; focus</button>
@@ -341,7 +343,7 @@ const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == n
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
 /* ---------------- settings ---------------- */
-const DEF = { size: 19, spacing: 'normal', face: 'serif', theme: 'sepia', turn: 'curl', guide: 'off', zebra: false, bold: false, wpm: 220 };
+const DEF = { size: 19, spacing: 'normal', face: 'serif', theme: 'sepia', turn: 'curl', guide: 'off', zebra: false, bold: false, wpm: 220, rate: 1, voice: '' };
 const S = Object.assign({}, DEF, lsGet('bookorig.settings', {}));
 const saveS = () => lsSet('bookorig.settings', S);
 const SPACING = { snug: 1.45, normal: 1.65, airy: 1.9 };
@@ -989,9 +991,9 @@ function afterShown(i) {
   if (R.pendingGuide === 'bottom') { R.guideLine = guideMetrics().lines - 1; } else R.guideLine = 0;
   R.pendingGuide = null;
   R.lines = null;
-  if (pacing()) { R.guideLine = firstTextLine(0); }
+  if (pacing()) { wordHi.hidden = true; R.guideLine = firstTextLine(0); }
   placeGuide();
-  if (pacing() && R.pace.on) schedulePace(lineDur(R.guideLine) + 150);
+  paceOnNewPage();
   prefetch(i);
 }
 function updateSeekLabel(n) {
@@ -1038,82 +1040,229 @@ band.addEventListener('pointermove', e => {
 });
 const endBand = e => {
   if (!bandDrag) return; const moved = bandDrag.moved; bandDrag = null; band.style.transition = '';
-  if (pacing()) { if (moved) { if (R.pace.on) schedulePace(lineDur(R.guideLine)); } else if (e.type === 'pointerup') togglePace(); return; }
+  if (pacing()) { if (moved) { if (R.pace.on) { if (R.pace.mode === 'speak') speakFromLine(R.guideLine); else schedulePace(lineDur(R.guideLine)); } } else if (e.type === 'pointerup') togglePace(); return; }
   if (!moved && e.type === 'pointerup') stepGuide(1);
 };
 band.addEventListener('pointerup', endBand); band.addEventListener('pointercancel', endBand);
 band.addEventListener('keydown', e => { if (e.key === 'ArrowDown') { e.preventDefault(); stepGuide(1); } if (e.key === 'ArrowUp') { e.preventDefault(); stepGuide(-1); } });
 
-/* line map: which words sit on which line of the page on screen */
-function pageLines(i) {
+/* word map: every word on the page on screen, with its line and its place in the DOM */
+function pageTokens(i) {
   const d = R.dims, el = stage.querySelector(`.pg[data-i="${i}"] .pg-content`);
-  const n = el && el.offsetHeight ? Math.max(1, Math.round(el.offsetHeight / d.lh)) : Math.floor(d.bodyH / d.lh);
-  const lines = Array.from({ length: n }, () => ({ w: 0, t: [] }));
-  if (!el) return lines;
+  const toks = [];
+  if (!el) return toks;
   const top = el.getBoundingClientRect().top;
   const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   const rg = document.createRange();
+  let prevBlk = null, prevEndsSpace = true;
   for (let node = tw.nextNode(); node; node = tw.nextNode()) {
+    const blk = node.parentElement.closest('p,h2');
     const re = /\S+/g; let m;
     while ((m = re.exec(node.data))) {
-      rg.setStart(node, m.index); rg.setEnd(node, m.index + m[0].length);
-      const r = rg.getClientRects()[0]; if (!r) continue;
-      const k = Math.floor((r.top - top + 2) / d.lh);
-      if (k < 0 || k >= n) continue;
-      // a word split by <b> tags counts once: only count text that starts a word
-      const startsWord = m.index > 0 || !node.previousSibling || /\s$/.test(node.previousSibling.textContent || '');
-      if (startsWord) lines[k].w++;
-      lines[k].t.push(m[0]);
+      // bold word starts split one word over two text nodes: glue them back together
+      if (m.index === 0 && !prevEndsSpace && blk === prevBlk && toks.length) {
+        const t = toks[toks.length - 1]; t.text += m[0]; t.en = node; t.eo = m.index + m[0].length;
+      } else {
+        rg.setStart(node, m.index); rg.setEnd(node, m.index + m[0].length);
+        const r = rg.getClientRects()[0];
+        toks.push({ text: m[0], line: r ? Math.floor((r.top - top + 2) / d.lh) : -1, blk, sn: node, so: m.index, en: node, eo: m.index + m[0].length });
+      }
+      prevEndsSpace = false;
     }
+    prevEndsSpace = /\s$/.test(node.data) || !node.data.length;
+    prevBlk = blk;
   }
+  return toks;
+}
+function pageLines(i, toks) {
+  const d = R.dims, el = stage.querySelector(`.pg[data-i="${i}"] .pg-content`);
+  const n = el && el.offsetHeight ? Math.max(1, Math.round(el.offsetHeight / d.lh)) : Math.floor(d.bodyH / d.lh);
+  const lines = Array.from({ length: n }, () => ({ w: 0 }));
+  toks.forEach(t => { if (t.line >= 0 && t.line < n) lines[t.line].w++; });
   return lines;
 }
-function curLines() {
-  if (!R.lines || R.lines.i !== R.cur) { R.lines = { i: R.cur, l: pageLines(R.cur) }; if (R.dims.spread && R.pf && R.cur + 1 < R.N) { const r2 = pageLines(R.cur + 1); R.lines.l.forEach((x, k) => { if (r2[k]) { x.w += r2[k].w; x.t = x.t.concat(r2[k].t); } }); } }
-  return R.lines.l;
+function curMap() {
+  if (!R.lines || R.lines.i !== R.cur) {
+    const toks = pageTokens(R.cur), lines = pageLines(R.cur, toks);
+    if (R.dims.spread && R.pf && R.cur + 1 < R.N) {
+      const t2 = pageTokens(R.cur + 1), l2 = pageLines(R.cur + 1, t2);
+      l2.forEach((x, k) => { if (lines[k]) lines[k].w += x.w; else lines[k] = x; });
+      toks.push(...t2);
+    }
+    R.lines = { i: R.cur, l: lines, t: toks };
+  }
+  return R.lines;
 }
+const curLines = () => curMap().l;
 function firstTextLine(from) { const l = curLines(); let g = from; while (g < l.length && !l[g].w) g++; return g < l.length ? g : 0; }
 function lineDur(k) { const l = curLines()[k]; const w = l ? l.w : 0; return Math.max(320, Math.round(w * 60000 / S.wpm) + 90); }
 
-/* auto-pacer */
+/* auto-pacer and read aloud share one control pill */
+const canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+const isSpeak = () => pacing() && R.pace.mode === 'speak';
 function paceUI() {
   const p = R && R.pace; const box = $('#pace');
   box.hidden = !(p && p.active);
-  if (!p) return;
+  const idle = !(p && p.active);
+  $('#rPaceBtn').lastChild.textContent = !idle && p.mode === 'pace' ? (p.on ? 'Pause pacer' : 'Resume pacer') : 'Auto-pace';
+  $('#rSpeakBtn').lastChild.textContent = !idle && p.mode === 'speak' ? (p.on ? 'Pause reading' : 'Resume reading') : 'Read aloud';
+  if (idle) { wordHi.hidden = true; return; }
   $('#paceIcon').textContent = p.on ? '❚❚' : '▶';
-  $('#paceToggle').setAttribute('aria-label', p.on ? 'Pause auto-pacer' : 'Resume auto-pacer');
-  $('#paceVal').textContent = S.wpm + ' wpm';
-  $('#rPaceBtn').lastChild.textContent = p.active ? (p.on ? 'Pause pacer' : 'Resume pacer') : 'Auto-pace';
+  const what = p.mode === 'speak' ? 'reading aloud' : 'auto-pacer';
+  $('#paceToggle').setAttribute('aria-label', (p.on ? 'Pause ' : 'Resume ') + what);
+  $('#paceClose').setAttribute('aria-label', 'Stop ' + what);
+  $('#paceVal').textContent = p.mode === 'speak' ? '🔊 ' + S.rate.toFixed(1) + '×' : S.wpm + ' wpm';
+  if (p.mode !== 'speak') wordHi.hidden = true;
 }
-function schedulePace(ms) { clearTimeout(R.pace.t); R.pace.t = setTimeout(paceTick, ms); }
+function schedulePace(ms) { clearTimeout(R.pace.t); if (R.pace.mode === 'pace') R.pace.t = setTimeout(paceTick, ms); }
 function paceTick() {
-  if (!R || !R.pace.on) return;
+  if (!R || !R.pace.on || R.pace.mode !== 'pace') return;
   const l = curLines(); let g = R.guideLine + 1;
   while (g < l.length && !l[g].w) g++;
-  if (g >= l.length) {
-    const step = R.pf && R.dims.spread ? 2 : 1;
-    if (R.cur + step >= R.N) { stopPace(); toast('You reached the end of the book.'); return; }
-    R.pendingGuide = 'top'; next(); return; // afterShown carries on from the new page
-  }
+  if (g >= l.length) return turnForPacer();
   R.guideLine = g; placeGuide(); schedulePace(lineDur(g));
 }
-function startPace() {
+function turnForPacer() {
+  const step = R.pf && R.dims.spread ? 2 : 1;
+  if (R.cur + step >= R.N) { stopPace(); toast('You reached the end of the book.'); return; }
+  R.pendingGuide = 'top';
+  if (document.hidden) go(R.cur + step); else next(); // afterShown carries on from the new page
+}
+function startPace(mode = 'pace') {
   if (!R) return;
-  if (R.mode !== 'reflow') { toast('Auto-pace works in the Reflow layout. Switch it under Display & focus.', 3500); return; }
-  R.pace = R.pace || {}; R.pace.active = true; R.pace.on = true; R.lines = null;
+  if (R.mode !== 'reflow') { toast((mode === 'speak' ? 'Read aloud' : 'Auto-pace') + ' works in the Reflow layout. Switch it under Display & focus.', 3500); return; }
+  if (mode === 'speak' && !canSpeak) { toast('This browser can’t read aloud.', 3000); return; }
+  if (pacing()) stopPace();
+  R.pace = { active: true, on: true, mode, t: 0 }; R.lines = null;
   closePanels(); showChrome(false);
   R.guideLine = firstTextLine(Math.min(R.guideLine, curLines().length - 1));
-  placeGuide(); paceUI(); schedulePace(lineDur(R.guideLine) + 400);
+  placeGuide(); paceUI();
+  if (mode === 'speak') speakFromLine(R.guideLine); else schedulePace(lineDur(R.guideLine) + 400);
 }
-function pausePace() { if (!pacing()) return; R.pace.on = false; clearTimeout(R.pace.t); paceUI(); }
-function togglePace() { if (!pacing()) return startPace(); if (R.pace.on) pausePace(); else { R.pace.on = true; paceUI(); schedulePace(lineDur(R.guideLine)); } }
-function stopPace() { if (!R || !R.pace) return; clearTimeout(R.pace.t); R.pace.on = false; R.pace.active = false; paceUI(); placeGuide(); }
+function pausePace() {
+  if (!pacing() || !R.pace.on) return;
+  R.pace.on = false; clearTimeout(R.pace.t);
+  if (R.pace.mode === 'speak') stopSpeech();
+  paceUI();
+}
+function resumePace(delay = 0) {
+  if (!pacing()) return;
+  R.pace.on = true; paceUI();
+  if (R.pace.mode === 'speak') speakFromToken(R.sp && R.sp.lastTok != null ? R.sp.lastTok : firstTokOnLine(R.guideLine));
+  else schedulePace(lineDur(R.guideLine) + delay);
+}
+function togglePace() { if (!pacing()) return startPace(); if (R.pace.on) pausePace(); else resumePace(); }
+function stopPace() {
+  if (!R || !R.pace) return;
+  clearTimeout(R.pace.t); if (R.pace.mode === 'speak') stopSpeech();
+  R.pace.on = false; R.pace.active = false; R.sp = null; paceUI(); placeGuide();
+}
+function adjustSpeed(dir) {
+  if (isSpeak()) {
+    S.rate = Math.round(Math.max(0.5, Math.min(2.5, S.rate + dir * 0.1)) * 10) / 10; saveS(); paceUI();
+    if (R.pace.on) speakFromToken(R.sp && R.sp.lastTok != null ? R.sp.lastTok : firstTokOnLine(R.guideLine));
+  } else { S.wpm = Math.max(80, Math.min(600, S.wpm + dir * 20)); saveS(); paceUI(); }
+  if ($('#setPanel').classList.contains('open')) renderSetPanel();
+}
 function setWpm(d) { S.wpm = Math.max(80, Math.min(600, S.wpm + d)); saveS(); paceUI(); if ($('#setPanel').classList.contains('open')) renderSetPanel(); }
+function setRate(d) { S.rate = Math.round(Math.max(0.5, Math.min(2.5, S.rate + d)) * 10) / 10; saveS(); paceUI(); if ($('#setPanel').classList.contains('open')) renderSetPanel(); }
+// continue on the page that just appeared
+function paceOnNewPage() {
+  if (!pacing() || !R.pace.on) return;
+  if (R.pace.mode === 'speak') { const gen = R.sp ? R.sp.gen : 0; setTimeout(() => { if (isSpeak() && R.pace.on && (!R.sp || R.sp.gen === gen)) speakFromLine(R.guideLine); }, 260); }
+  else schedulePace(lineDur(R.guideLine) + 150);
+}
+
+/* read aloud */
+const wordHi = document.createElement('div'); wordHi.className = 'word-hi'; wordHi.hidden = true;
+reader.appendChild(wordHi);
+let voices = [];
+function loadVoices() { try { voices = speechSynthesis.getVoices() || []; } catch (e) { voices = []; } }
+if (canSpeak) { loadVoices(); try { speechSynthesis.addEventListener('voiceschanged', loadVoices); } catch (e) {} }
+function pickVoice() {
+  if (!voices.length) loadVoices();
+  return voices.find(v => v.voiceURI === S.voice) || voices.find(v => /^en[-_]?(IN|GB|US)?/i.test(v.lang) && v.localService) || voices.find(v => /^en/i.test(v.lang)) || null;
+}
+function firstTokOnLine(line) { const t = curMap().t; const k = t.findIndex(x => x.line >= line); return k < 0 ? 0 : k; }
+function speakFromLine(line) { speakFromToken(firstTokOnLine(line)); }
+function stopSpeech() { if (R && R.sp) R.sp.gen = -1; try { speechSynthesis.cancel(); } catch (e) {} clearInterval(R && R.sp ? R.sp.est : 0); wordHi.hidden = true; }
+function speakFromToken(from) {
+  if (!R || !isSpeak()) return;
+  const toks = curMap().t;
+  try { speechSynthesis.cancel(); } catch (e) {}
+  if (R.sp) clearInterval(R.sp.est);
+  const gen = (R.spGen = (R.spGen || 0) + 1);
+  // sentence-sized chunks: long utterances stall in some browsers, and short ones keep the guide in sync
+  const chunks = []; let c = null;
+  for (let k = from; k < toks.length; k++) {
+    const t = toks[k];
+    if (!c) c = { text: '', offs: [] };
+    c.offs.push([c.text ? c.text.length + 1 : 0, k]);
+    c.text += (c.text ? ' ' : '') + t.text;
+    const endSent = /[.!?;:]["”’)\]]*$/.test(t.text), endPara = !toks[k + 1] || toks[k + 1].blk !== t.blk;
+    if (endSent || endPara || c.text.length > 220) { chunks.push(c); c = null; }
+  }
+  if (c) chunks.push(c);
+  R.sp = { gen, chunks, ci: 0, lastTok: from, boundary: R.sp ? R.sp.boundary : false, est: 0 };
+  if (!chunks.length) return turnForPacer();
+  speakChunk(0);
+}
+function markTok(k) {
+  if (!R || !R.sp) return;
+  const t = curMap().t[k]; if (!t) return;
+  R.sp.lastTok = k;
+  if (t.line >= 0 && t.line !== R.guideLine) { R.guideLine = t.line; placeGuide(); }
+  try {
+    const rg = document.createRange(); rg.setStart(t.sn, t.so); rg.setEnd(t.en, t.eo);
+    const r = rg.getClientRects()[0], rr = reader.getBoundingClientRect();
+    if (r) { wordHi.style.left = (r.left - rr.left - 2) + 'px'; wordHi.style.top = (r.top - rr.top) + 'px'; wordHi.style.width = (r.width + 4) + 'px'; wordHi.style.height = r.height + 'px'; wordHi.hidden = false; }
+  } catch (e) {}
+}
+function speakChunk(ci) {
+  const sp = R.sp, ch = sp.chunks[ci], gen = sp.gen;
+  sp.ci = ci;
+  const u = new SpeechSynthesisUtterance(ch.text);
+  const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en';
+  u.rate = S.rate;
+  const live = () => R && R.sp && R.sp.gen === gen;
+  u.onstart = () => {
+    if (!live()) return;
+    markTok(ch.offs[0][1]);
+    // no word timing from this voice yet: estimate where we are
+    clearInterval(sp.est);
+    const t0 = performance.now();
+    sp.est = setInterval(() => {
+      if (!live() || R.sp.boundary) return clearInterval(sp.est);
+      const at = (performance.now() - t0) / 1000 * 14.5 * S.rate;
+      let k = ch.offs[0][1]; for (const [o, idx] of ch.offs) { if (o <= at) k = idx; else break; }
+      markTok(k);
+    }, 150);
+  };
+  u.onboundary = e => {
+    if (!live() || (e.name && e.name !== 'word')) return;
+    R.sp.boundary = true; clearInterval(sp.est);
+    let k = ch.offs[0][1]; for (const [o, idx] of ch.offs) { if (o <= e.charIndex) k = idx; else break; }
+    markTok(k);
+  };
+  u.onend = () => {
+    if (!live()) return;
+    clearInterval(sp.est);
+    if (ci + 1 < sp.chunks.length) speakChunk(ci + 1);
+    else { wordHi.hidden = true; turnForPacer(); }
+  };
+  u.onerror = e => {
+    if (!live() || e.error === 'interrupted' || e.error === 'canceled') return;
+    clearInterval(sp.est); stopPace(); toast('Reading aloud stopped: the voice isn’t available. Try another under Display & focus.', 4500);
+  };
+  try { speechSynthesis.speak(u); } catch (e) { stopPace(); toast('This browser can’t read aloud.', 3000); }
+}
+
 $('#paceToggle').addEventListener('click', togglePace);
-$('#paceSlow').addEventListener('click', () => setWpm(-20));
-$('#paceFast').addEventListener('click', () => setWpm(20));
+$('#paceSlow').addEventListener('click', () => adjustSpeed(-1));
+$('#paceFast').addEventListener('click', () => adjustSpeed(1));
 $('#paceClose').addEventListener('click', stopPace);
-$('#rPaceBtn').addEventListener('click', () => { if (pacing()) { togglePace(); showChrome(false); } else startPace(); });
+$('#rPaceBtn').addEventListener('click', () => { if (pacing() && R.pace.mode === 'pace') { togglePace(); showChrome(false); } else startPace('pace'); });
+$('#rSpeakBtn').addEventListener('click', () => { if (isSpeak()) { togglePace(); showChrome(false); } else startPace('speak'); });
 
 /* chrome + gestures */
 const chromeOn = () => reader.classList.contains('chrome-on');
@@ -1216,11 +1365,25 @@ function renderSetPanel() {
     <div class="opt"><span>Line tint<small>Faint stripe on every other line</small></span>${seg('zebra', [['false', 'Off'], ['true', 'On']])}</div>
     <div class="opt"><span>Bold word starts</span>${seg('bold', [['false', 'Off'], ['true', 'On']])}</div>
     <div class="opt"><span>Auto-pace speed<small>Words per minute for the moving guide</small></span><div class="seg"><button type="button" data-wpm="-20" aria-label="Slower">−</button><span class="size-val" style="min-width:64px">${S.wpm} wpm</span><button type="button" data-wpm="20" aria-label="Faster">+</button></div></div>
+    <div class="rp-h">Read aloud</div>
+    <div class="opt"><span>Speed</span><div class="seg"><button type="button" data-rate="-0.1" aria-label="Slower voice">−</button><span class="size-val" style="min-width:52px">${S.rate.toFixed(1)}×</span><button type="button" data-rate="0.1" aria-label="Faster voice">+</button></div></div>
+    <div class="opt"><span>Voice<small>${canSpeak ? 'Voices come from your phone’s settings' : 'This browser can’t read aloud'}</small></span><select id="voiceSel" class="vsel" ${canSpeak ? '' : 'disabled'}>${voiceOptions()}</select></div>
     <div class="rp-h">Page</div>
     <div class="opt"><span>Theme</span><div class="seg" role="group">${[['light', '#fbfaf6'], ['sepia', '#f3ead6'], ['dark', '#171614']].map(([v, c]) => `<button type="button" data-set="theme" data-v="${v}" aria-pressed="${S.theme === v}" aria-label="${v} theme"><span class="sw" style="background:${c}"></span></button>`).join('')}</div></div>
     <div class="opt"><span>Page turn</span>${seg('turn', [['curl', 'Curl'], ['slide', 'Slide']])}</div>
     <div class="opt"><span>Layout<small>${R.book.scanned ? 'Scanned PDF: original pages only' : isSample ? 'Sample text has no original pages' : 'Reflow fits text to your screen'}</small></span>${modeSeg}</div>`;
 }
+function voiceOptions() {
+  if (!canSpeak) return '<option>Not available</option>';
+  if (!voices.length) loadVoices();
+  const list = voices.filter(v => /^en/i.test(v.lang)); const use = list.length ? list : voices;
+  return `<option value="">Automatic</option>` + use.map(v => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === S.voice ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+}
+$('#setPanel').addEventListener('change', e => {
+  if (e.target.id !== 'voiceSel') return;
+  S.voice = e.target.value; saveS();
+  try { const u = new SpeechSynthesisUtterance('This is how I sound.'); const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; } u.rate = S.rate; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (er) {}
+});
 let relayT = 0;
 function scheduleRelayout(delay = 0) {
   clearTimeout(relayT);
@@ -1229,6 +1392,7 @@ function scheduleRelayout(delay = 0) {
 $('#setPanel').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   if (b.dataset.wpm) { setWpm(+b.dataset.wpm); return; }
+  if (b.dataset.rate) { setRate(+b.dataset.rate); return; }
   if (b.dataset.size) { S.size = Math.max(14, Math.min(30, S.size + (+b.dataset.size))); saveS(); applyReaderStyle(); renderSetPanel(); if (R.mode === 'reflow') scheduleRelayout(450); return; }
   if (b.dataset.mode) {
     if (b.dataset.mode === R.mode) return;
@@ -1257,11 +1421,11 @@ function openPanel(which) {
 }
 function closePanels(quick) {
   $('#setPanel').classList.remove('open'); $('#bmPanel').classList.remove('open'); $('#rscrim').hidden = true;
-  if (quick !== true && R && R.pace && R.pace.resume) { R.pace.resume = false; if (R.pace.active) { R.pace.on = true; paceUI(); schedulePace(lineDur(R.guideLine) + 300); } }
+  if (quick !== true && R && R.pace && R.pace.resume) { R.pace.resume = false; if (R.pace.active) resumePace(300); }
 }
 
 async function closeReader() {
-  if (R && R.pace) { clearTimeout(R.pace.t); R.pace.active = false; } $('#pace').hidden = true; $('#rPaceBtn').lastChild.textContent = 'Auto-pace';
+  if (R && R.pace) stopPace(); $('#pace').hidden = true;
   if (!R) { reader.hidden = true; return; }
   clearTimeout(saveT);
   const b = R.book; if (R.N) b.pos = posForIndex(R.cur);
@@ -1289,7 +1453,7 @@ window.addEventListener('resize', () => {
 });
 document.addEventListener('visibilitychange', () => {
   if (!R) return;
-  if (document.visibilityState === 'hidden') { R.book.pos = posForIndex(R.cur); saveBook(R.book); pausePace(); }
+  if (document.visibilityState === 'hidden') { R.book.pos = posForIndex(R.cur); saveBook(R.book); if (!isSpeak()) pausePace(); }
   else requestWake();
 });
 
