@@ -1,6 +1,6 @@
 // Bookorig service worker: works offline, receives PDFs shared from other apps.
 // Bump VERSION whenever the files change so phones pick up the update.
-const VERSION = '6';
+const VERSION = '7';
 const SHELL = 'bookorig-shell-' + VERSION;
 const STATIC = 'bookorig-static';
 const SHARE = 'bookorig-share';

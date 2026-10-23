@@ -691,6 +691,7 @@ function applyReaderStyle() {
 
 async function openBook(id) {
   const book = books.find(b => b.id === id); if (!book) return;
+  ensureDepth(3);
   if (book.kind !== 'sample' && !requirePdf()) return;
   R = { book, doc: null, paras: null, pages: null, N: 0, cur: 0, ws: 0, we: 0, pf: null, mode: 'reflow', dims: null, guideLine: 0, pendingGuide: null, img: new Map(), renderQ: Promise.resolve(), silent: false, anim: false, gen: 0, busy: false, lastProg: Date.now() };
   book.opened = Date.now(); book.bm = book.bm || []; saveBook(book);
@@ -1668,7 +1669,8 @@ function closePanels(quick) {
   if (quick !== true && R && R.pace && R.pace.resume) { R.pace.resume = false; if (R.pace.active) resumePace(300); }
 }
 
-async function closeReader() {
+async function closeReader(fromBack) {
+  if (fromBack !== true) trimBackSteps();
   if (R && R.sel) closeSel(); if (R && R.pace) stopPace(); $('#pace').hidden = true;
   if (!R) { reader.hidden = true; return; }
   clearTimeout(saveT);
@@ -1739,31 +1741,40 @@ document.addEventListener('drop', async e => { if (!reader.hidden) return; e.pre
   guardBack();
 })();
 
-/* Android's edge swipe is a Back gesture. Catch it so a stray swipe never closes the book or the app. */
-let backArmed = 0;
-function pushGuard() { try { history.pushState({ bookorig: 1 }, ''); } catch (e) {} }
+/* Android's edge swipe is a Back gesture. We keep a few in-app "back steps" in the history:
+   reading: 3 steps (hint, then shelf); shelf: 1 step (hint, then the app closes).
+   Chrome skips back steps that were added without a tap, so steps are only added right after one. */
+let popIgnore = 0;
+const backDepth = () => (history.state && history.state.bk) || 0;
+function ensureDepth(target) {
+  let n = backDepth();
+  try { while (n < target) { n++; history.pushState({ bk: n }, ''); } } catch (e) {}
+}
+const wantDepth = () => (!reader.hidden && R ? 3 : 1);
 function guardBack() {
-  try { history.replaceState({ bookorig: 0 }, ''); } catch (e) {}
-  pushGuard();
+  try { history.replaceState({ bk: backDepth() }, ''); } catch (e) {}
+  const arm = () => ensureDepth(wantDepth());
+  document.addEventListener('pointerup', arm, true);
+  document.addEventListener('click', arm, true);
+  document.addEventListener('keydown', arm, true);
   window.addEventListener('popstate', () => {
-    const twice = Date.now() - backArmed < 2200;
+    if (popIgnore) { popIgnore = 0; return; }
+    const n = backDepth();
     if (!reader.hidden && R) {
-      if (R.sel) { closeSel(); return pushGuard(); }
-      if (panelOpen()) { closePanels(); showChrome(false); return pushGuard(); }
-      if (chromeOn()) { showChrome(false); return pushGuard(); }
-      pushGuard();
-      if (twice) { backArmed = 0; closeReader(); return; }
-      backArmed = Date.now(); toast('Swipe back again to return to your shelf.', 2200); return;
+      if (R.sel) return closeSel();
+      if (panelOpen()) { closePanels(); showChrome(false); return; }
+      if (chromeOn()) return showChrome(false);
+      if (n >= 2) { toast('Swipe back again to return to your shelf.', 2500); return; }
+      $('#toast').classList.remove('show'); closeReader(true); return;
     }
-    if (!$('#sheetWrap').hidden) { closeSheet(); return pushGuard(); }
-    if (twice) { backArmed = 0; history.back(); return; } // second swipe: really leave
-    backArmed = Date.now(); toast('Swipe back again to close Bookorig.', 2200); pushGuard();
+    if (!$('#sheetWrap').hidden) { closeSheet(); return; }
+    if (n === 0) toast('Swipe back again to close Bookorig.', 2500);
   });
 }
-
-/* ---------------- app shell: offline, install, share-to-app ---------------- */
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+// Leaving a book with the Shelf button: drop the extra reading steps so Back on the shelf behaves.
+function trimBackSteps() {
+  const extra = backDepth() - 1;
+  if (extra > 0) { popIgnore = 1; try { history.go(-extra); } catch (e) { popIgnore = 0; } }
 }
 let installEvt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('#installBtn').hidden = false; });
