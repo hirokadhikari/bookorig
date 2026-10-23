@@ -64,6 +64,8 @@ Reflow is only as good as the text inside the PDF. Scans with rough OCR come out
 
 Sharing a PDF to Bookorig needs Android and the installed app.
 
+On Android with gesture navigation, swiping in from a screen edge is the system Back gesture. Bookorig catches it, so one stray swipe never closes your book. Swipe back twice quickly to leave.
+
 ## Running it yourself
 
 It's plain static files with no build step.

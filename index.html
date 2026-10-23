@@ -1736,7 +1736,30 @@ document.addEventListener('drop', async e => { if (!reader.hidden) return; e.pre
   }
   renderLib();
   importShared();
+  guardBack();
 })();
+
+/* Android's edge swipe is a Back gesture. Catch it so a stray swipe never closes the book or the app. */
+let backArmed = 0;
+function pushGuard() { try { history.pushState({ bookorig: 1 }, ''); } catch (e) {} }
+function guardBack() {
+  try { history.replaceState({ bookorig: 0 }, ''); } catch (e) {}
+  pushGuard();
+  window.addEventListener('popstate', () => {
+    const twice = Date.now() - backArmed < 2200;
+    if (!reader.hidden && R) {
+      if (R.sel) { closeSel(); return pushGuard(); }
+      if (panelOpen()) { closePanels(); showChrome(false); return pushGuard(); }
+      if (chromeOn()) { showChrome(false); return pushGuard(); }
+      pushGuard();
+      if (twice) { backArmed = 0; closeReader(); return; }
+      backArmed = Date.now(); toast('Swipe back again to return to your shelf.', 2200); return;
+    }
+    if (!$('#sheetWrap').hidden) { closeSheet(); return pushGuard(); }
+    if (twice) { backArmed = 0; history.back(); return; } // second swipe: really leave
+    backArmed = Date.now(); toast('Swipe back again to close Bookorig.', 2200); pushGuard();
+  });
+}
 
 /* ---------------- app shell: offline, install, share-to-app ---------------- */
 if ('serviceWorker' in navigator) {
