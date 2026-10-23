@@ -54,6 +54,10 @@ If you lose your place mid-paragraph (ADHD or just a long day), these are the se
 
 Long-press any word. You get its meaning (this part needs internet), plus four highlight colours, a note box and copy. Drag after the long-press, or tap another word, to select more than one word. Everything you mark shows up under Bookmarks & notes, where you can jump to it or copy it all out. Highlights stick to the words, not the page, so they stay put when you change the text size.
 
+## Covers
+
+Each spine takes its colours from the book's own cover and shows a tiny copy of it, so no two books look alike. Tap Covers above the shelf to see the front covers facing out instead. If a PDF has no picture on its first page, Bookorig looks the title up on Open Library and uses the cover it finds (the title is sent to Open Library for that). From the book card you can search again or switch back to the first page.
+
 ## Reading
 
 Swipe, drag a corner, or tap the left or right edge to turn. Tap the middle for the menu and the page slider.
@@ -84,4 +88,4 @@ Then open http://localhost:8000/. If you change anything, bump `VERSION` in `sw.
 
 ## Credits
 
-PDF reading by [pdf.js](https://github.com/mozilla/pdf.js) and the page curl by [StPageFlip](https://github.com/Nodlik/StPageFlip). Word meanings come from [Wiktionary](https://en.wiktionary.org/) (CC BY-SA). The English word list used for OCR repair is from [word-list](https://github.com/sindresorhus/word-list) (MIT). Fonts are Literata, Atkinson Hyperlegible, Caveat and Kalam. The sample book is the first chapter of Alice's Adventures in Wonderland (1865, public domain). Licenses are in `vendor/LICENSES.txt`.
+PDF reading by [pdf.js](https://github.com/mozilla/pdf.js) and the page curl by [StPageFlip](https://github.com/Nodlik/StPageFlip). Word meanings come from [Wiktionary](https://en.wiktionary.org/) (CC BY-SA). Covers found online come from [Open Library](https://openlibrary.org/). The English word list used for OCR repair is from [word-list](https://github.com/sindresorhus/word-list) (MIT). Fonts are Literata, Atkinson Hyperlegible, Caveat and Kalam. The sample book is the first chapter of Alice's Adventures in Wonderland (1865, public domain). Licenses are in `vendor/LICENSES.txt`.
