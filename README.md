@@ -1,6 +1,6 @@
 # Bookorig
 
-A PDF book reader for your phone. You get one page at a time, no scrolling, and the page curls over when you turn it.
+A book reader for your phone, for PDF and EPUB files. You get one page at a time, no scrolling, and the page curls over when you turn it.
 
 It runs in the browser and installs like an app. Your books stay on your phone and never get uploaded anywhere.
 
@@ -31,7 +31,7 @@ Open it at https://hirokadhikari.github.io/bookorig/
 
 1. Open the link in Chrome on Android.
 2. Tap Install on the shelf, or Chrome menu ⋮ > Add to Home screen.
-3. Tap + Add PDF. Later you can also share a PDF to Bookorig straight from Files or WhatsApp.
+3. Tap + Add book and pick a PDF or EPUB. Later you can also share a book to Bookorig straight from Files or WhatsApp.
 
 Once it's installed it works offline.
 
@@ -62,7 +62,7 @@ Each spine takes its colours from the book's own cover and shows a tiny copy of 
 
 Swipe, drag a corner, or tap the left or right edge to turn. Tap the middle for the menu and the page slider.
 
-PDFs with real text get reflowed to fit your screen and font size. Scanned PDFs open as the original pages. For books that have text you can switch between the two whenever you like.
+EPUB books always reflow to fit your screen and font size, with their own chapter headings and cover. PDFs with real text get reflowed the same way. Scanned PDFs open as the original pages. For books that have text you can switch between the two whenever you like.
 
 There are light, sepia and dark themes, serif or sans text, and a plain slide instead of the curl if your phone struggles with the animation.
 
@@ -72,7 +72,9 @@ Books are saved in Chrome's storage on that phone. They don't sync between devic
 
 Scanned books come with text from the scanner's OCR, and that text can be rough. Bookorig cleans it up carefully. A word that is already a real English word is never changed, however rare or advanced it is. Only tokens that aren't words at all get repaired, and only when there is exactly one sensible fix: look-alike letters ("1esson" becomes "lesson", "rnove" becomes "move"), words broken by stray spaces ("Ack nowledgmen ts" becomes "Acknowledgments"), spaced-out headings and junk symbols. Names the book uses again and again are left alone. Pages that are still mostly unreadable appear as the original scan, and the page icon at the top shows the scan of any page so you can check it against the text.
 
-Sharing a PDF to Bookorig needs Android and the installed app.
+Sharing a book to Bookorig needs Android and the installed app.
+
+EPUBs bought from a store are often copy-protected (DRM) and only open in that store's app. DRM-free EPUBs work, such as ones from Project Gutenberg or Standard Ebooks. Pictures inside an EPUB aren't shown yet, only the text.
 
 On Android with gesture navigation, swiping in from a screen edge is the system Back gesture. Bookorig catches it, so one stray swipe never closes your book. Swipe back twice quickly to leave.
 
@@ -88,4 +90,4 @@ Then open http://localhost:8000/. If you change anything, bump `VERSION` in `sw.
 
 ## Credits
 
-PDF reading by [pdf.js](https://github.com/mozilla/pdf.js) and the page curl by [StPageFlip](https://github.com/Nodlik/StPageFlip). Word meanings come from [Wiktionary](https://en.wiktionary.org/) (CC BY-SA). Covers found online come from [Open Library](https://openlibrary.org/). The English word list used for OCR repair is from [word-list](https://github.com/sindresorhus/word-list) (MIT). Fonts are Literata, Atkinson Hyperlegible, Caveat and Kalam. The sample book is the first chapter of Alice's Adventures in Wonderland (1865, public domain). Licenses are in `vendor/LICENSES.txt`.
+PDF reading by [pdf.js](https://github.com/mozilla/pdf.js), EPUB unpacking by [JSZip](https://github.com/Stuk/jszip) and the page curl by [StPageFlip](https://github.com/Nodlik/StPageFlip). Word meanings come from [Wiktionary](https://en.wiktionary.org/) (CC BY-SA). Covers found online come from [Open Library](https://openlibrary.org/). The English word list used for OCR repair is from [word-list](https://github.com/sindresorhus/word-list) (MIT). Fonts are Literata, Atkinson Hyperlegible, Caveat and Kalam. The sample book is the first chapter of Alice's Adventures in Wonderland (1865, public domain). Licenses are in `vendor/LICENSES.txt`.

@@ -21,7 +21,7 @@
     "params": {
       "title": "title",
       "text": "text",
-      "files": [{ "name": "books", "accept": ["application/pdf", ".pdf"] }]
+      "files": [{ "name": "books", "accept": ["application/pdf", ".pdf", "application/epub+zip", ".epub"] }]
     }
   }
 }

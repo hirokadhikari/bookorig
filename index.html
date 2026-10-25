@@ -297,7 +297,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
     <div class="pill-row">
       <button class="pill" id="installBtn" type="button" hidden>Install</button>
       <button class="pill" id="surprise" type="button">Surprise me</button>
-      <button class="pill solid" id="addBtn" type="button"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Add PDF</button>
+      <button class="pill solid" id="addBtn" type="button"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Add book</button>
     </div>
   </div>
   <label class="search" for="q">
@@ -312,11 +312,11 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
     <div class="plank"></div>
     <div class="shelf-empty" id="shelfEmpty" hidden>
       <p>Your shelf is empty</p>
-      <button class="pill" type="button" id="addBtn2">Add your first PDF</button>
+      <button class="pill" type="button" id="addBtn2">Add your first book</button>
     </div>
     <div class="shelf-hint label">Tap a book to open · swipe the shelf</div>
   </section>
-  <input type="file" id="file" accept="application/pdf,.pdf" multiple hidden>
+  <input type="file" id="file" accept="application/pdf,.pdf,application/epub+zip,.epub" multiple hidden>
 </main>
 
 <div id="sheetWrap" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sTitle"></div></div>
@@ -369,6 +369,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 
 <script src="vendor/pdf.min.js"></script>
 <script src="vendor/page-flip.browser.js"></script>
+<script src="vendor/jszip.min.js"></script>
 <script>
 (() => {
 'use strict';
@@ -562,7 +563,7 @@ function fmtDate(t) { try { return new Date(t).toLocaleDateString(undefined, { d
 function renderSheet() {
   const b = books.find(x => x.id === selectedId); if (!b) return closeSheet();
   const pct = Math.round((b.progress || 0) * 100), st = status(b);
-  const meta = [b.kind === 'sample' ? 'Sample' : 'PDF', b.pages ? `${b.pages} pages` : null, b.scanned ? 'scanned' : null, `added ${fmtDate(b.added)}`].filter(Boolean).join(' · ');
+  const meta = [b.kind === 'sample' ? 'Sample' : b.kind === 'epub' ? 'EPUB' : 'PDF', b.pages ? `${b.kind === 'epub' ? 'about ' : ''}${b.pages} pages` : null, b.scanned ? 'scanned' : null, `added ${fmtDate(b.added)}`].filter(Boolean).join(' · ');
   let body;
   if (sheetMode === 'rename') {
     body = `<div class="edit-row"><label class="label eyebrow" for="rnTitle">Title</label><input id="rnTitle" value="${esc(b.title)}" maxlength="140">
@@ -579,7 +580,7 @@ function renderSheet() {
         <button class="pill" type="button" data-act="prev" ${i <= 0 ? 'disabled style="opacity:.35"' : ''}>← Previous</button>
         <button class="pill" type="button" data-act="next" ${i < 0 || i >= list.length - 1 ? 'disabled style="opacity:.35"' : ''}>Next →</button>
         <button class="pill" type="button" data-act="rename">Rename</button>
-        ${b.kind === 'pdf' ? (b.coverSrc === 'online' && b.cover1 ? `<button class="pill" type="button" data-act="coverPdf">Use first page as cover</button>` : `<button class="pill" type="button" data-act="coverOnline">Find cover online</button>`) : ''}
+        ${b.kind === 'pdf' || b.kind === 'epub' ? (b.coverSrc === 'online' && b.cover1 ? `<button class="pill" type="button" data-act="coverPdf">${b.kind === 'epub' ? 'Use the book’s own cover' : 'Use first page as cover'}</button>` : `<button class="pill" type="button" data-act="coverOnline">Find cover online</button>`) : ''}
         <button class="pill" type="button" data-act="remove">Remove</button>
       </div>`;
   }
@@ -622,6 +623,124 @@ async function sheetAction(act) {
   }
 }
 async function saveBook(b) { try { await dbPut('books', b); } catch (e) { toast('Couldn’t save your place. Browser storage may be full.'); } }
+
+/* ---------------- EPUB import ---------------- */
+const isEpub = f => /\.epub$/i.test(f.name || '') || f.type === 'application/epub+zip';
+function addFile(f) { return isEpub(f) ? addEpub(f) : addPdf(f); }
+function zipPath(base, href) {
+  const out = base ? base.split('/') : [];
+  (href || '').split('#')[0].split('/').forEach(seg => { if (seg === '..') out.pop(); else if (seg && seg !== '.') out.push(seg); });
+  return out.map(x => { try { return decodeURIComponent(x); } catch (e) { return x; } }).join('/');
+}
+const xmlDoc = t => new DOMParser().parseFromString(t, 'application/xml');
+const byLocal = (doc, name) => [...doc.getElementsByTagName('*')].filter(e => e.localName === name);
+async function openEpubZip(data) {
+  if (!window.JSZip) throw new Error('nolib');
+  const zip = await JSZip.loadAsync(data);
+  const names = Object.keys(zip.files);
+  const file = p => zip.file(p) || zip.file(names.find(k => k.toLowerCase() === (p || '').toLowerCase()) || '\u0000');
+  // store DRM (Adobe, etc.) encrypts the chapters; font obfuscation only touches font files and is fine
+  if (file('META-INF/rights.xml')) throw new Error('drm');
+  const enc = file('META-INF/encryption.xml');
+  if (enc) {
+    const refs = byLocal(xmlDoc(await enc.async('string')), 'CipherReference').map(r => r.getAttribute('URI') || '');
+    if (refs.some(u => /\.(x?html?|xml|ncx|opf)$/i.test(u))) throw new Error('drm');
+  }
+  const cont = file('META-INF/container.xml'); if (!cont) throw new Error('bad');
+  const rf = byLocal(xmlDoc(await cont.async('string')), 'rootfile')[0];
+  const opfPath = rf && rf.getAttribute('full-path'), opfF = opfPath && file(opfPath);
+  if (!opfF) throw new Error('bad');
+  const opf = xmlDoc(await opfF.async('string')), base = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/')) : '';
+  const items = new Map();
+  byLocal(opf, 'item').forEach(it => items.set(it.getAttribute('id'), { href: zipPath(base, it.getAttribute('href')), type: it.getAttribute('media-type') || '', props: it.getAttribute('properties') || '' }));
+  const spine = byLocal(opf, 'itemref').filter(r => r.getAttribute('linear') !== 'no').map(r => items.get(r.getAttribute('idref'))).filter(it => it && /html|xml/i.test(it.type) && !/\bnav\b/.test(it.props));
+  const meta = n => { const e = byLocal(opf, n)[0]; return e ? e.textContent.replace(/\s+/g, ' ').trim() : ''; };
+  let coverItem = [...items.values()].find(it => /\bcover-image\b/.test(it.props));
+  if (!coverItem) { const m = byLocal(opf, 'meta').find(e => e.getAttribute('name') === 'cover'); if (m) coverItem = items.get(m.getAttribute('content')); }
+  if (!coverItem) coverItem = [...items.values()].find(it => /^image\//.test(it.type) && /cover/i.test(it.href));
+  if (coverItem && !/^image\//.test(coverItem.type)) coverItem = null;
+  return { file, spine, title: meta('title'), author: meta('creator'), coverItem };
+}
+const EP_BLOCK = new Set(['p', 'div', 'li', 'blockquote', 'section', 'article', 'aside', 'header', 'footer', 'figure', 'figcaption', 'dt', 'dd', 'pre', 'table', 'tr', 'td', 'th', 'ul', 'ol', 'dl', 'hr', 'main', 'body', 'center', 'address', 'hgroup']);
+const EP_SKIP = new Set(['script', 'style', 'nav', 'svg', 'math', 'head', 'title', 'rt', 'rp', 'img', 'image', 'video', 'audio', 'object', 'iframe', 'noscript']);
+// One chapter file -> paragraphs and headings. The first heading before any text starts a new page.
+function epubBlocks(html) {
+  let d = new DOMParser().parseFromString(html, 'application/xhtml+xml');
+  if (d.getElementsByTagName('parsererror').length) d = new DOMParser().parseFromString(html, 'text/html'); // e.g. &nbsp; without a doctype
+  const body = d.body || byLocal(d, 'body')[0]; if (!body) return [];
+  byLocal(body, 'sup').forEach(x => { if (/^[\s\d*†‡§¶\[\]()]{1,6}$/.test(x.textContent)) x.remove(); }); // footnote markers
+  byLocal(body, 'br').forEach(x => x.replaceWith(d.createTextNode(' ')));
+  const out = []; let buf = '', seenText = false, chapterHead = false;
+  const clean = t => t.replace(/­/g, '').replace(/[\s  -​  　﻿]+/g, ' ').trim();
+  const flush = () => { const t = clean(buf); buf = ''; if (t) { out.push([0, t]); seenText = true; } };
+  const walk = el => {
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3) { buf += n.data; continue; }
+      if (n.nodeType !== 1) continue;
+      const tag = (n.localName || '').toLowerCase();
+      if (EP_SKIP.has(tag)) continue;
+      if (/^h[1-6]$/.test(tag)) {
+        flush(); const t = clean(n.textContent);
+        if (t) { const first = !seenText && !chapterHead; out.push([first ? 2 : 1, t]); if (first) chapterHead = true; }
+        continue;
+      }
+      if (EP_BLOCK.has(tag)) { flush(); walk(n); flush(); continue; }
+      walk(n);
+    }
+  };
+  walk(body); flush();
+  return out.map(p => (p[0] > 0 && p[1].length > 220 ? [0, p[1]] : p));
+}
+async function epubParas(ep) {
+  const paras = [];
+  for (let k = 0; k < ep.spine.length; k++) {
+    const f = ep.file(ep.spine[k].href); if (!f) continue;
+    epubBlocks(await f.async('string')).forEach(b => paras.push([b[0], b[1], k]));
+    if (k % 5 === 4) await sleep(0);
+  }
+  return paras;
+}
+async function epubCover(ep) {
+  const f = ep.coverItem && ep.file(ep.coverItem.href); if (!f) return null;
+  const blob = new Blob([await f.async('arraybuffer')], { type: ep.coverItem.type });
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = bad; im.src = url; });
+    const w = 320, h = Math.round((img.naturalHeight || 480) * w / (img.naturalWidth || 320)), c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.82);
+  } catch (e) { return null; } finally { URL.revokeObjectURL(url); }
+}
+async function addEpub(file) {
+  toast(`Adding “${file.name}”…`, 0);
+  try {
+    const ab = await file.arrayBuffer();
+    const ep = await openEpubZip(ab);
+    const paras = await epubParas(ep);
+    if (!paras.some(p => p[1].length > 20)) throw new Error('empty');
+    const fname = file.name.replace(/\.epub$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const title = ep.title || fname, author = /^(unknown|admin|user)$/i.test(ep.author) ? '' : ep.author;
+    let cover = await epubCover(ep), coverSrc = cover ? 'epub' : null;
+    if (!cover) { cover = await findCoverOnline(title, author); if (cover) coverSrc = 'online'; }
+    const words = paras.reduce((a, p) => a + p[1].split(' ').length, 0);
+    const id = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const book = { id, kind: 'epub', title, author, added: Date.now(), opened: 0, size: file.size, pages: Math.max(1, Math.round(words / 275)), cover, scanned: false, mode: 'reflow', pos: { p: 0, w: 0, pg: 0 }, progress: 0, finished: false, bm: [], color: hash(title + id) % PAL.length, cover1: null, coverSrc, coverPic: !!cover, pal: cover ? await coverPalette(cover) : null };
+    await dbPut('files', { id, data: ab });
+    await dbPut('texts', { id, v: TEXT_VER, p: paras });
+    await dbPut('books', book);
+    books.push(book); renderLib();
+    toast(`Added “${title}”${coverSrc === 'online' ? ' · cover found online' : ''}`);
+    try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+  } catch (e) {
+    console.error(e);
+    const m = e && e.message;
+    if (m === 'drm') toast(`“${file.name}” is copy-protected (DRM), so it only opens in the store’s own app.`, 6000);
+    else if (m === 'nolib') toast('The EPUB reader didn’t load. Check your connection and reload the page.', 5000);
+    else if (m === 'empty') toast(`“${file.name}” has no readable text.`, 5000);
+    else if (e && (e.name === 'QuotaExceededError' || /quota/i.test(m || ''))) toast('Your browser storage is full. Remove a book and try again.', 5000);
+    else toast(`Couldn’t open “${file.name}”. The EPUB may be damaged.`, 5000);
+  }
+}
 
 /* ---------------- PDF import ---------------- */
 function requirePdf() { if (!pdfjs) { toast('The PDF engine didn’t load. Check your connection and reload the page.', 5000); return false; } return true; }
@@ -684,7 +803,8 @@ async function detectScanned(doc) {
   return chars / n < 60;
 }
 async function addPdf(file) {
-  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { toast(`“${file.name}” isn’t a PDF.`); return; }
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { toast(`“${file.name}” isn’t a PDF or EPUB.`); return; }
+  if (!requirePdf()) return;
   toast(`Adding “${file.name}”…`, 0);
   let doc;
   try {
@@ -967,7 +1087,7 @@ function applyReaderStyle() {
 async function openBook(id) {
   const book = books.find(b => b.id === id); if (!book) return;
   ensureDepth(3);
-  if (book.kind !== 'sample' && !requirePdf()) return;
+  if (book.kind === 'pdf' && !requirePdf()) return;
   R = { book, doc: null, paras: null, pages: null, N: 0, cur: 0, ws: 0, we: 0, pf: null, mode: 'reflow', dims: null, guideLine: 0, pendingGuide: null, img: new Map(), renderQ: Promise.resolve(), silent: false, anim: false, gen: 0, busy: false, lastProg: Date.now() };
   book.opened = Date.now(); book.bm = book.bm || []; saveBook(book);
   reader.hidden = false; document.body.style.overflow = 'hidden';
@@ -977,11 +1097,20 @@ async function openBook(id) {
   requestWake();
   try {
     if (book.kind === 'sample') R.paras = SAMPLE_PARAS;
-    else {
+    else if (book.kind === 'epub') {
+      let cache = null; try { cache = await dbGet('texts', id); } catch (e) {}
+      if (cache && cache.v === TEXT_VER) R.paras = cache.p;
+      else {
+        const rec = await dbGet('files', id); if (!rec) throw new Error('missing-file');
+        setLoading('Preparing your book', 'Reading the chapters', null);
+        R.paras = await epubParas(await openEpubZip(rec.data));
+        try { await dbPut('texts', { id, v: TEXT_VER, p: R.paras }); } catch (e) {}
+      }
+    } else {
       const rec = await dbGet('files', id); if (!rec) throw new Error('missing-file');
       R.doc = await openPdfData(rec.data);
     }
-    R.mode = book.kind === 'sample' ? 'reflow' : (book.scanned ? 'pages' : (book.mode || 'reflow'));
+    R.mode = book.kind !== 'pdf' ? 'reflow' : (book.scanned ? 'pages' : (book.mode || 'reflow'));
     if (R.mode === 'reflow') await ensureParas();
     const r = R;
     await layout();
@@ -991,7 +1120,7 @@ async function openBook(id) {
     if (e === CANCELLED) return;
     console.error(e);
     if (R && R.book === book && R.doc && R.mode === 'reflow') { setLoading('Couldn’t lay out this book', 'You can still read it as the original pages.', null, true); return; }
-    setLoading('Couldn’t open this book', e && e.message === 'missing-file' ? 'The saved PDF is missing. Remove the book and add it again.' : 'The PDF may be damaged. Try removing it and adding it again.', null, true);
+    setLoading('Couldn’t open this book', e && e.message === 'missing-file' ? 'The saved book file is missing. Remove the book and add it again.' : `The ${book.kind === 'epub' ? 'EPUB' : 'PDF'} may be damaged. Try removing it and adding it again.`, null, true);
   }
 }
 async function ensureParas() {
@@ -1933,7 +2062,7 @@ $('#bmPanel').addEventListener('click', async e => {
 const seg = (key, opts, extra = {}) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button type="button" data-set="${key}" data-v="${v}" aria-pressed="${String(S[key]) === String(v)}" ${extra.disabled && extra.disabled.includes(v) ? 'disabled' : ''}>${l}</button>`).join('')}</div>`;
 function renderSetPanel() {
   const canReflow = !(R.book.scanned) && (R.book.kind === 'sample' || R.paras || R.doc);
-  const isSample = R.book.kind === 'sample';
+  const isSample = R.book.kind !== 'pdf';
   const modeSeg = `<div class="seg" role="group"><button type="button" data-mode="reflow" aria-pressed="${R.mode === 'reflow'}" ${R.book.scanned ? 'disabled' : ''}>Reflow</button><button type="button" data-mode="pages" aria-pressed="${R.mode === 'pages'}" ${isSample ? 'disabled' : ''}>Original</button></div>`;
   $('#setPanel').innerHTML = `<div class="grab"></div>
     <div class="rp-h">Text</div>
@@ -1951,7 +2080,7 @@ function renderSetPanel() {
     <div class="rp-h">Page</div>
     <div class="opt"><span>Theme</span><div class="seg" role="group">${[['light', '#fbfaf6'], ['sepia', '#f3ead6'], ['dark', '#171614']].map(([v, c]) => `<button type="button" data-set="theme" data-v="${v}" aria-pressed="${S.theme === v}" aria-label="${v} theme"><span class="sw" style="background:${c}"></span></button>`).join('')}</div></div>
     <div class="opt"><span>Page turn</span>${seg('turn', [['curl', 'Curl'], ['slide', 'Slide']])}</div>
-    <div class="opt"><span>Layout<small>${R.book.scanned ? 'Scanned PDF: original pages only' : isSample ? 'Sample text has no original pages' : 'Reflow fits text to your screen'}</small></span>${modeSeg}</div>`;
+    <div class="opt"><span>Layout<small>${R.book.scanned ? 'Scanned PDF: original pages only' : R.book.kind === 'epub' ? 'EPUB books always fit your screen' : isSample ? 'Sample text has no original pages' : 'Reflow fits text to your screen'}</small></span>${modeSeg}</div>`;
 }
 function voiceOptions() {
   if (!canSpeak) return '<option>Not available</option>';
@@ -2040,9 +2169,9 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ---------------- library events ---------------- */
-$('#addBtn').addEventListener('click', () => { if (requirePdf()) $('#file').click(); });
-$('#addBtn2').addEventListener('click', () => { if (requirePdf()) $('#file').click(); });
-$('#file').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; for (const f of fs) await addPdf(f); });
+$('#addBtn').addEventListener('click', () => $('#file').click());
+$('#addBtn2').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; for (const f of fs) await addFile(f); });
 $('#q').addEventListener('input', e => { query = e.target.value; renderLib(); });
 $('#chips').addEventListener('click', e => { const c = e.target.closest('.chip'); if (!c) return; filter = c.dataset.f; renderLib(); });
 $('#shelfRow').addEventListener('click', e => { const s = e.target.closest('.spine, .cover-book'); if (s) openSheet(s.dataset.id); });
@@ -2061,7 +2190,7 @@ $('#sheet').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target
 
 /* drag-and-drop on desktop */
 document.addEventListener('dragover', e => { if (reader.hidden) e.preventDefault(); });
-document.addEventListener('drop', async e => { if (!reader.hidden) return; e.preventDefault(); if (!requirePdf()) return; for (const f of e.dataTransfer.files) await addPdf(f); });
+document.addEventListener('drop', async e => { if (!reader.hidden) return; e.preventDefault(); for (const f of e.dataTransfer.files) await addFile(f); });
 
 /* ---------------- boot ---------------- */
 (async function boot() {
@@ -2115,6 +2244,10 @@ function trimBackSteps() {
   const extra = backDepth() - 1;
   if (extra > 0) { popIgnore = 1; try { history.go(-extra); } catch (e) { popIgnore = 0; } }
 }
+/* ---------------- app shell: offline, install, share-to-app ---------------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
 let installEvt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('#installBtn').hidden = false; });
 window.addEventListener('appinstalled', () => { installEvt = null; $('#installBtn').hidden = true; toast('Bookorig is on your home screen.'); });
@@ -2127,19 +2260,18 @@ $('#installBtn').addEventListener('click', async () => {
 async function importShared() {
   if (!/[?&]shared=1\b/.test(location.search) || !('caches' in window)) return;
   history.replaceState(null, '', location.pathname);
-  if (!requirePdf()) return;
   try {
     const c = await caches.open('bookorig-share');
     const keys = await c.keys();
-    if (!keys.length) { toast('Nothing was shared. Use Add PDF instead.'); return; }
+    if (!keys.length) { toast('Nothing was shared. Use Add book instead.'); return; }
     for (const k of keys) {
       const res = await c.match(k); if (!res) continue;
       const blob = await res.blob();
       const name = decodeURIComponent(res.headers.get('x-name') || 'Shared book.pdf');
       await c.delete(k);
-      await addPdf(new File([blob], name, { type: 'application/pdf' }));
+      await addFile(new File([blob], name, { type: res.headers.get('content-type') || blob.type || '' }));
     }
-  } catch (e) { toast('Couldn’t add the shared file. Use Add PDF instead.', 4000); }
+  } catch (e) { toast('Couldn’t add the shared file. Use Add book instead.', 4000); }
 }
 })();
 </script>
