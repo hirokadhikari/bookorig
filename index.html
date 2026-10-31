@@ -620,7 +620,7 @@ function renderSheet() {
         <button class="pill" type="button" data-act="next" ${i < 0 || i >= list.length - 1 ? 'disabled style="opacity:.35"' : ''}>Next →</button>
         ${st === 'reading' && !b.hideCont ? '<button class="pill" type="button" data-act="hideCont">Remove from Continue reading</button>' : ''}
         <button class="pill" type="button" data-act="rename">Rename</button>
-        ${b.kind === 'pdf' || b.kind === 'epub' ? (b.coverSrc === 'online' && b.cover1 ? `<button class="pill" type="button" data-act="coverPdf">${b.kind === 'epub' ? 'Use the book’s own cover' : 'Use first page as cover'}</button>` : `<button class="pill" type="button" data-act="coverOnline">Find cover online</button>`) : ''}
+        ${b.kind === 'pdf' || b.kind === 'epub' ? `<button class="pill" type="button" data-act="coverOnline">${b.coverSrc === 'online' ? 'Try another cover' : 'Find cover online'}</button>${b.coverSrc === 'online' && b.cover1 ? `<button class="pill" type="button" data-act="coverPdf">${b.kind === 'epub' ? 'Use the book’s own cover' : 'Use first page as cover'}</button>` : ''}` : ''}
         <button class="pill" type="button" data-act="remove">Remove</button>
       </div>`;
   }
@@ -644,10 +644,17 @@ async function sheetAction(act) {
   if (act === 'rename' || act === 'remove' || act === 'view') { sheetMode = act; return renderSheet(); }
   if (act === 'coverOnline') {
     if (!navigator.onLine) { toast('You’re offline. Finding a cover needs internet.'); return; }
-    toast('Looking for a cover…', 0);
-    const c = await findCoverOnline(b.title, b.author);
-    if (!c) { toast('No cover found online. Rename the book to its exact title and try again.', 4500); return; }
+    const again = b.coverSrc === 'online', tried = again ? [...(b.coverTried || [])] : [];
+    toast(again ? 'Looking for another cover…' : 'Looking for a cover…', 0);
+    const out = {};
+    let c = await findCoverOnline(b.title, b.author, tried, out);
+    if (c && again && c === b.cover) { tried.push(out.id); c = await findCoverOnline(b.title, b.author, tried, out); } // older books didn't record which cover they got
+    if (!c) {
+      if (again) { b.coverTried = []; await saveBook(b); toast('No other cover found online. Tap again to go back to the first one.', 4000); return; }
+      toast('No cover found online. Rename the book to its exact title and try again.', 4500); return;
+    }
     if (b.coverSrc !== 'online') b.cover1 = b.cover;
+    b.coverTried = [...tried, out.id];
     b.cover = c; b.coverSrc = 'online'; b.coverPic = true; b.pal = await coverPalette(c); await saveBook(b); renderLib(); renderSheet(); toast('Cover updated', 1500); return;
   }
   if (act === 'coverPdf') {
@@ -807,7 +814,7 @@ async function firstPageHasImage(doc) {
   } catch (e) { return true; }
 }
 const normTitle = t => t.toLowerCase().replace(/[’']/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-async function findCoverOnline(title, author) {
+async function findCoverOnline(title, author, skip = [], out = {}) {
   if (!navigator.onLine) return null;
   const q = new URLSearchParams({ title: title.replace(/\s*[:(\[].*$/, ''), limit: '10', fields: 'title,author_name,cover_i' });
   if (author) q.set('author', author.split(/[,&]| and /)[0].trim());
@@ -824,17 +831,21 @@ async function findCoverOnline(title, author) {
       if (/workbook|journal|summary|study guide|analysis/i.test(d.title || '') && !/workbook|journal|summary|guide|analysis/i.test(title)) sc -= 0.6;
       return [sc, d];
     }).sort((a, b) => b[0] - a[0]);
-    if (!scored.length || scored[0][0] < 0.6) return null;
-    const ir = await fetch(`https://covers.openlibrary.org/b/id/${scored[0][1].cover_i}-L.jpg`, { signal: ctl.signal });
-    if (!ir.ok) return null;
-    const blob = await ir.blob(); if (blob.size < 2000) return null; // tiny files are "no cover" placeholders
-    const url = URL.createObjectURL(blob);
-    try {
-      const img = await new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = bad; im.src = url; });
-      const w = 320, h = Math.round(img.naturalHeight * w / img.naturalWidth), c = document.createElement('canvas'); c.width = w; c.height = h;
-      c.getContext('2d').drawImage(img, 0, 0, w, h);
-      return c.toDataURL('image/jpeg', 0.82);
-    } finally { URL.revokeObjectURL(url); }
+    const picks = scored.filter(([sc, d]) => sc >= 0.6 && !skip.includes(d.cover_i)).map(([, d]) => d.cover_i).filter((id, i, a) => a.indexOf(id) === i);
+    for (const id of picks.slice(0, 4)) {
+      const ir = await fetch(`https://covers.openlibrary.org/b/id/${id}-L.jpg`, { signal: ctl.signal });
+      if (!ir.ok) continue;
+      const blob = await ir.blob(); if (blob.size < 2000) continue; // tiny files are "no cover" placeholders
+      const url = URL.createObjectURL(blob);
+      try {
+        const img = await new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = bad; im.src = url; });
+        const w = 320, h = Math.round(img.naturalHeight * w / img.naturalWidth), c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        out.id = id;
+        return c.toDataURL('image/jpeg', 0.82);
+      } catch (e) { continue; } finally { URL.revokeObjectURL(url); }
+    }
+    return null;
   } catch (e) { return null; } finally { clearTimeout(to); }
 }
 
