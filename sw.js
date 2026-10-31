@@ -1,12 +1,12 @@
 // Bookorig service worker: works offline, receives PDFs shared from other apps.
 // Bump VERSION whenever the files change so phones pick up the update.
-const VERSION = '10';
+const VERSION = '11';
 const SHELL = 'bookorig-shell-' + VERSION;
 const STATIC = 'bookorig-static';
 const SHARE = 'bookorig-share';
 const PRECACHE = [
   './', './index.html', './manifest.webmanifest', './fonts/fonts.css',
-  './vendor/pdf.min.js', './vendor/pdf.worker.min.js', './vendor/page-flip.browser.js', './vendor/jszip.min.js',
+  './vendor/pdf.min.js', './vendor/pdf.worker.min.js', './vendor/jszip.min.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/favicon-64.png',
   './fonts/atkinson-hyperlegible-latin-400-normal.woff2',
   './fonts/atkinson-hyperlegible-latin-700-normal.woff2',

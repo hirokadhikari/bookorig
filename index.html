@@ -175,6 +175,11 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 .pg-img .pg-foot{justify-content:center}
 .pg-wait{position:absolute;inset:0;display:grid;place-items:center;color:var(--r-soft);font:14px var(--f-sans)}
 .slider{position:absolute;inset:0;overflow:hidden}
+.curlbox{position:absolute;inset:0}
+.curlbox .pg{position:absolute;inset:0;visibility:hidden}
+.curlbox .pg.on{visibility:visible}
+.curl-gl{position:absolute;left:0;top:0;width:100%;height:100%;z-index:3;pointer-events:none;display:none}
+.curl-gl.on{display:block}
 .track{position:absolute;inset:0;will-change:transform}
 .slot{position:absolute;top:0;width:100%;height:100%}
 .slot .pg{position:absolute;inset:0}
@@ -368,7 +373,6 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script src="vendor/pdf.min.js"></script>
-<script src="vendor/page-flip.browser.js"></script>
 <script src="vendor/jszip.min.js"></script>
 <script>
 (() => {
@@ -408,7 +412,7 @@ const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == n
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
 /* ---------------- settings ---------------- */
-const DEF = { size: 19, spacing: 'normal', face: 'serif', theme: 'sepia', turn: 'curl', guide: 'off', zebra: false, bold: false, wpm: 220, rate: 1, voice: '' };
+const DEF = { size: 19, spacing: 'normal', face: 'serif', theme: 'sepia', turn: 'curl', guide: 'off', zebra: false, bold: false, wpm: 220, rate: 1, voice: '', sound: true };
 const S = Object.assign({}, DEF, lsGet('bookorig.settings', {}));
 const saveS = () => lsSet('bookorig.settings', S);
 const SPACING = { snug: 1.45, normal: 1.65, airy: 1.9 };
@@ -1076,6 +1080,7 @@ async function requestWake() { try { wakeLock = await navigator.wakeLock.request
 function applyReaderStyle() {
   reader.dataset.theme = S.theme;
   reader.classList.toggle('zebra', !!S.zebra);
+  paintV++;
   const lh = Math.round(S.size * SPACING[S.spacing]);
   reader.style.setProperty('--rfs', S.size + 'px');
   reader.style.setProperty('--lh', lh + 'px');
@@ -1139,7 +1144,7 @@ async function ensureParas() {
 
 function measureDims() {
   const W = stage.clientWidth, H = stage.clientHeight;
-  const spread = S.turn === 'curl' && W > H && W >= 700;
+  const spread = false; // one centred page in both turn modes
   const pageW = spread ? Math.floor(W / 2) : W, pageH = H;
   const padx = Math.max(22, Math.round((pageW - 680) / 2));
   reader.style.setProperty('--padx', padx + 'px');
@@ -1285,7 +1290,10 @@ async function runLayout(title) {
 }
 
 function teardownView() {
-  if (R && R.pf) { try { R.pf.destroy(); } catch (e) {} R.pf = null; }
+  if (R && CT) { cancelAnimationFrame(CT.raf); CT = null; R.anim = false; }
+  if (CURL.cv) CURL.cv.classList.remove('on');
+  if (R) R.curlBox = null;
+  CURL.cache.clear();
   stage.innerHTML = '';
 }
 function pageEl(i) {
@@ -1376,59 +1384,412 @@ $('#origScroll').addEventListener('click', e => { if (e.target.tagName === 'IMG'
 
 function prefetch(i) { if (R && R.mode === 'pages') [i + 1, i + 2, i - 1].forEach(k => { if (k >= 0 && k < R.N) loadImg(k); }); }
 
-/* curl view */
-function computeWindow(c) {
-  const WIN = 24;
-  let ws = Math.max(0, c - 10); ws -= ws % 2;
-  const we = Math.min(R.N, ws + WIN);
-  ws = Math.max(0, we - WIN); ws -= ws % 2;
-  return [ws, we];
+/* curl view: our own page curl. The page being turned is painted to a canvas and bent
+   around a cylinder in WebGL. The pages underneath stay real DOM, so highlights,
+   long-press and the line guide keep working. */
+const CURL = { gl: null, cv: null, pg: null, sh: null, grid: null, quad: null, nIdx: 0, tex: null, cache: new Map(), paper: [1, 1, 1] };
+let CT = null, paintV = 0, prepT = 0;
+const GRID_X = 40, GRID_Y = 60;
+
+function glProgram(gl, vs, fs) {
+  const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'aPos'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let k = 0; k < n; k++) { const a = gl.getActiveUniform(p, k); u[a.name] = gl.getUniformLocation(p, a.name); }
+  return { p, u };
 }
-function windowEls(ws, we) { const a = []; for (let i = ws; i < we; i++) a.push(pageEl(i)); return a; }
-function buildCurl() {
-  if (!window.St || !St.PageFlip) { S.turn = 'slide'; saveS(); toast('Page curl didn’t load, so pages slide instead.'); return buildSlide(); }
-  const d = R.dims;
-  const block = document.createElement('div'); block.className = 'flipbook'; stage.appendChild(block);
-  [R.ws, R.we] = computeWindow(R.cur);
-  const els = windowEls(R.ws, R.we);
-  const pf = new St.PageFlip(block, {
-    width: d.pageW, height: d.pageH, size: 'stretch',
-    minWidth: d.spread ? Math.floor(d.W / 2) : d.W, maxWidth: d.pageW + 2, minHeight: 100, maxHeight: d.pageH + 2,
-    startPage: R.cur - R.ws, drawShadow: true, flippingTime: 650, usePortrait: true, startZIndex: 0, autoSize: true,
-    maxShadowOpacity: 0.4, showCover: false, mobileScrollSupport: false, clickEventForward: false, useMouseEvents: true,
-    swipeDistance: 30, showPageCorners: false, disableFlipByClick: true
-  });
-  R.pf = pf;
-  pf.on('flip', e => { if (R.silent || R.pf !== pf) return; afterShown(R.ws + e.data); setTimeout(maybeRewindow, 40); });
-  pf.loadFromHTML(els);
-  // Portrait-friendly turning: back flips start at the book's real left corner,
-  // and a drag released past the middle of the page completes the turn.
-  pf.flipPrev = corner => { const r = pf.getRender().getRect(); pf.getFlipController().flip({ x: r.left + 8, y: corner === 'top' ? r.top + 1 : r.top + r.height - 2 }); };
-  const fc = pf.getFlipController(), origStop = fc.stopMove.bind(fc), origFold = fc.fold.bind(fc);
-  // Start a drag-fold from where the finger first touched, not where it is 250ms later.
-  fc.fold = function (pos) { if (this.calc === null && pf.mousePosition) origFold(pf.mousePosition); return origFold(pos); };
-  fc.stopMove = function () {
-    if (this.calc) {
-      const pos = this.calc.getPosition(), rect = this.getBoundsRect();
-      if (pos.x > 0 && pos.x < rect.pageWidth * 0.6) { const y = this.calc.getCorner() === 'bottom' ? rect.height : 0; return this.animateFlippingTo(pos, { x: -rect.pageWidth, y }, true); }
-    }
-    return origStop();
-  };
-}
-function maybeRewindow() {
-  if (!R || !R.pf) return;
-  if (R.pf.getState() !== 'read') { setTimeout(maybeRewindow, 80); return; }
-  const c = R.cur;
-  if ((c - R.ws < 4 && R.ws > 0) || (R.we - c <= 4 && R.we < R.N)) rewindow(c);
-}
-function rewindow(c) {
-  const [ws, we] = computeWindow(c);
-  R.silent = true;
+const PAGE_VS = `
+attribute vec2 aPos;
+uniform vec2 uSize, uA, uD;
+uniform float uR, uF, uZS;
+varying vec2 vUv; varying vec3 vN;
+void main() {
+  vec2 p = aPos * uSize;
+  float s = dot(p - uA, uD);
+  vec2 q = p; float z = 0.0; vec3 n = vec3(0.0, 0.0, 1.0);
+  float hp = 3.14159265 * uR;
+  if (s > 0.0) {
+    if (s < hp) { float a = s / uR; q = p - uD * s + uD * uR * sin(a); z = uR * (1.0 - cos(a)); n = vec3(-uD * sin(a), cos(a)); }
+    else { q = p - uD * (2.0 * s - hp); z = 2.0 * uR; n = vec3(0.0, 0.0, -1.0); }
+  }
+  vec2 c = uSize * 0.5;
+  q = c + (q - c) * (uF / (uF - z));
+  gl_Position = vec4(q.x / uSize.x * 2.0 - 1.0, 1.0 - q.y / uSize.y * 2.0, -z / uZS, 1.0);
+  vUv = aPos; vN = n;
+}`;
+const PAGE_FS = `
+precision mediump float;
+uniform sampler2D uTex;
+uniform vec3 uPaper, uL;
+uniform float uThrough;
+varying vec2 vUv; varying vec3 vN;
+void main() {
+  vec3 n = normalize(vN);
+  bool front = n.z >= 0.0;
+  vec3 nv = front ? n : -n;
+  vec3 tex = texture2D(uTex, vUv).rgb;
+  vec3 col = front ? tex : mix(uPaper, tex, uThrough);
+  float l = dot(nv, uL) / uL.z;
+  float shade = clamp(0.6 + 0.4 * l, 0.45, 1.05);
+  float spec = pow(max(dot(reflect(-normalize(uL), nv), vec3(0.0, 0.0, 1.0)), 0.0), 18.0) * 0.07 * (1.0 - nv.z);
+  gl_FragColor = vec4(col * shade + spec, 1.0);
+}`;
+const SHADOW_VS = `
+attribute vec2 aPos;
+uniform vec2 uSize;
+varying vec2 vP;
+void main() { vP = aPos * uSize; gl_Position = vec4(aPos.x * 2.0 - 1.0, 1.0 - aPos.y * 2.0, 0.0, 1.0); }`;
+const SHADOW_FS = `
+precision mediump float;
+uniform vec2 uA, uD;
+uniform float uR, uK;
+varying vec2 vP;
+void main() {
+  float u = dot(vP - uA, uD) - uR;
+  float t = clamp(u / (14.0 + uR * 1.5), 0.0, 1.0);
+  float a = uK * (1.0 - t) * (1.0 - t);
+  gl_FragColor = vec4(0.0, 0.0, 0.0, a);
+}`;
+
+function curlGL() {
+  if (CURL.gl && !CURL.gl.isContextLost()) return CURL.gl;
+  CURL.gl = null;
+  const cv = document.createElement('canvas'); cv.className = 'curl-gl';
+  let gl = null;
+  try { gl = cv.getContext('webgl', { alpha: true, antialias: true, premultipliedAlpha: true, depth: true, preserveDrawingBuffer: false }); } catch (e) {}
+  if (!gl) return null;
   try {
-    if (ws !== R.ws || we !== R.we) { R.ws = ws; R.we = we; R.pf.updateFromHtml(windowEls(ws, we)); }
-    R.pf.turnToPage(c - R.ws);
-  } finally { R.silent = false; }
-  afterShown(c);
+    CURL.pg = glProgram(gl, PAGE_VS, PAGE_FS);
+    CURL.sh = glProgram(gl, SHADOW_VS, SHADOW_FS);
+  } catch (e) { console.error(e); return null; }
+  const v = [];
+  for (let y = 0; y <= GRID_Y; y++) for (let x = 0; x <= GRID_X; x++) v.push(x / GRID_X, y / GRID_Y);
+  const idx = [];
+  for (let y = 0; y < GRID_Y; y++) for (let x = 0; x < GRID_X; x++) {
+    const a = y * (GRID_X + 1) + x, b = a + 1, c = a + GRID_X + 1, d = c + 1;
+    idx.push(a, c, b, b, c, d);
+  }
+  CURL.grid = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, CURL.grid); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  CURL.ibuf = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, CURL.ibuf); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
+  CURL.nIdx = idx.length;
+  CURL.quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, CURL.quad); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+  CURL.tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, CURL.tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  cv.addEventListener('webglcontextlost', e => { e.preventDefault(); if (CT) curlFinish(false); CURL.gl = null; });
+  CURL.gl = gl; CURL.cv = cv;
+  return gl;
+}
+
+/* paint a DOM page into a canvas: each word at its own spot, with the page's fonts and colours */
+function paintPage(el) {
+  const box = el.getBoundingClientRect(), W = box.width, H = box.height;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr));
+  const x = cv.getContext('2d'); x.scale(dpr, dpr);
+  const rel = r => ({ l: r.left - box.left, t: r.top - box.top, w: r.width, h: r.height });
+  const rs = getComputedStyle(reader);
+  let pending = false;
+  x.fillStyle = getComputedStyle(el).backgroundColor; x.fillRect(0, 0, W, H);
+  const gut = x.createLinearGradient(0, 0, 22, 0); gut.addColorStop(0, 'rgba(0,0,0,.08)'); gut.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = gut; x.fillRect(0, 0, 22, H);
+  // every-other-line tint
+  const body = el.querySelector('.pg-body');
+  if (body && reader.classList.contains('zebra') && R.dims) {
+    const b = rel(body.getBoundingClientRect()), lh = R.dims.lh;
+    x.fillStyle = rs.getPropertyValue('--r-zebra').trim();
+    for (let y = lh; y < b.h; y += 2 * lh) x.fillRect(b.l, b.t + y, b.w, Math.min(lh, b.h - y));
+  }
+  // scanned page images
+  el.querySelectorAll('img').forEach(im => {
+    if (im.hidden || !im.complete || !im.naturalWidth) { pending = true; return; }
+    const r = rel(im.getBoundingClientRect()), s = Math.min(r.w / im.naturalWidth, r.h / im.naturalHeight);
+    const w = im.naturalWidth * s, h = im.naturalHeight * s;
+    try { x.drawImage(im, r.l + (r.w - w) / 2, r.t + (r.h - h) / 2, w, h); } catch (e) {}
+  });
+  // highlights
+  const bodyBox = body ? rel(body.getBoundingClientRect()) : null;
+  x.save(); if (bodyBox) { x.beginPath(); x.rect(bodyBox.l, bodyBox.t, bodyBox.w, bodyBox.h); x.clip(); }
+  el.querySelectorAll('mark.hl').forEach(m => {
+    const ms = getComputedStyle(m);
+    [...m.getClientRects()].forEach(cr => {
+      const r = rel(cr); if (r.w < 1) return;
+      x.fillStyle = ms.backgroundColor; x.fillRect(r.l, r.t, r.w, r.h);
+      if (m.classList.contains('noted')) { x.fillStyle = rs.getPropertyValue('--r-accent').trim(); x.fillRect(r.l, r.t + r.h - 2, r.w, 2); }
+    });
+  });
+  x.restore();
+  // words
+  const styles = new Map(), metrics = new Map(), rg = document.createRange();
+  const styleOf = pe => {
+    let s = styles.get(pe); if (s) return s;
+    const cs = getComputedStyle(pe), clipEl = pe.closest('.pf-t');
+    s = { font: `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`, color: cs.color, clip: clipEl ? rel(clipEl.getBoundingClientRect()) : null, clipEl, inBody: !!(bodyBox && body.contains(pe)) };
+    styles.set(pe, s); return s;
+  };
+  const baseOf = font => {
+    let m = metrics.get(font); if (m) return m;
+    x.font = font; const t = x.measureText('Hg');
+    m = { a: t.fontBoundingBoxAscent || t.actualBoundingBoxAscent || 0, d: t.fontBoundingBoxDescent || t.actualBoundingBoxDescent || 0 };
+    metrics.set(font, m); return m;
+  };
+  const put = (text, r, st) => {
+    if (st.inBody && (r.t + r.h / 2 < bodyBox.t || r.t + r.h / 2 > bodyBox.t + bodyBox.h)) return; // the page clips overflow
+    const m = baseOf(st.font);
+    x.font = st.font; x.fillStyle = st.color;
+    x.fillText(text, r.l, r.t + (r.h - (m.a + m.d)) / 2 + m.a);
+  };
+  const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  x.textBaseline = 'alphabetic';
+  for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+    const pe = n.parentElement; if (!pe) continue;
+    const st = styleOf(pe); let ellipsed = false;
+    const re = /\S+/g; let mt;
+    while ((mt = re.exec(n.data))) {
+      rg.setStart(n, mt.index); rg.setEnd(n, mt.index + mt[0].length);
+      const rects = [...rg.getClientRects()].filter(q => q.width > 0.5);
+      if (!rects.length) continue;
+      const r0 = rel(rects[0]);
+      if (st.clip) { // the footer title ends in "…" when it is too long
+        if (ellipsed) continue;
+        x.font = st.font;
+        if (st.clipEl.scrollWidth > st.clipEl.clientWidth + 1 && r0.l + r0.w > st.clip.l + st.clip.w - x.measureText('…').width) { put('…', { l: r0.l, t: r0.t, w: 0, h: r0.h }, st); ellipsed = true; continue; }
+      }
+      const last = rects[rects.length - 1];
+      if (rects.length === 1 || Math.abs(last.top - rects[0].top) < 2) { put(mt[0], r0, st); continue; }
+      // a word hyphenated over two lines: find where it breaks
+      let k = 1;
+      for (; k < mt[0].length; k++) {
+        rg.setStart(n, mt.index + k); rg.setEnd(n, mt.index + k + 1);
+        const crs = rg.getClientRects(), cr = crs[crs.length - 1]; // the char after a break also reports the hyphen's box first
+        if (cr && cr.top > rects[0].top + 2) break;
+      }
+      const a = mt[0].slice(0, k), b = mt[0].slice(k);
+      put(a + (/\p{L}$/u.test(a) && /^\p{L}/u.test(b) ? '-' : ''), r0, st);
+      if (b) put(b, rel(last), st);
+    }
+  }
+  // bookmark ribbon
+  const rib = el.classList.contains('bm') && el.querySelector('.ribbon');
+  if (rib) {
+    const r = rel(rib.getBoundingClientRect());
+    x.fillStyle = getComputedStyle(rib).backgroundColor;
+    x.beginPath(); x.moveTo(r.l, r.t); x.lineTo(r.l + r.w, r.t); x.lineTo(r.l + r.w, r.t + r.h); x.lineTo(r.l + r.w / 2, r.t + r.h * 0.76); x.lineTo(r.l, r.t + r.h); x.closePath(); x.fill();
+  }
+  return { cv, pending };
+}
+function curlEl(i) { return R.curlBox && R.curlBox.querySelector(`.pg[data-i="${i}"]`); }
+function curlPaint(i) {
+  const c = CURL.cache.get(i);
+  if (c && c.v === paintV && !c.pending) return c.cv;
+  const el = curlEl(i); if (!el) return null;
+  const out = paintPage(el);
+  CURL.cache.set(i, { v: paintV, cv: out.cv, pending: out.pending });
+  return out.cv;
+}
+function curlPrepaint() {
+  clearTimeout(prepT);
+  prepT = setTimeout(() => {
+    const run = () => { if (!R || R.view !== 'curl' || R.anim) return; [R.cur, R.cur - 1].forEach(i => { if (i >= 0 && i < R.N) curlPaint(i); }); };
+    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 700 }); else run();
+  }, 160);
+}
+
+function buildCurl() {
+  const gl = curlGL();
+  if (!gl) { toast('Page curl isn’t supported on this browser, so pages slide instead.'); return false; }
+  const box = document.createElement('div'); box.className = 'curlbox'; stage.appendChild(box);
+  stage.appendChild(CURL.cv);
+  R.curlBox = box; CURL.cache.clear();
+  // paper colour for the back of the turning page
+  const t = document.createElement('canvas').getContext('2d'); t.fillStyle = getComputedStyle(reader).getPropertyValue('--r-page').trim() || '#fff';
+  const hex = t.fillStyle.replace('#', ''); CURL.paper = hex.length === 6 ? [0, 2, 4].map(k => parseInt(hex.slice(k, k + 2), 16) / 255) : [1, 1, 1];
+  renderCurlSlots();
+  return true;
+}
+function renderCurlSlots() {
+  const box = R.curlBox, have = new Map();
+  box.querySelectorAll('.pg').forEach(el => have.set(+el.dataset.i, el));
+  const want = [R.cur - 1, R.cur, R.cur + 1].filter(i => i >= 0 && i < R.N);
+  have.forEach((el, i) => { if (!want.includes(i)) el.remove(); });
+  want.forEach(i => { if (!have.has(i)) box.appendChild(pageEl(i)); });
+  [...CURL.cache.keys()].forEach(i => { if (!want.includes(i)) CURL.cache.delete(i); });
+  curlShow(R.cur);
+}
+function curlShow(i) { R.curlBox.querySelectorAll('.pg').forEach(el => el.classList.toggle('on', +el.dataset.i === i)); }
+
+// Where the turning page's corner is (P) decides the fold; C0 is that corner lying flat.
+function curlGeom() {
+  const { W } = R.dims, P = CT.P, C0 = CT.C0, PI = Math.PI;
+  const dx = C0.x - P.x, dy = C0.y - P.y, D = Math.hypot(dx, dy);
+  const r = Math.max(0.5, CT.r0 * Math.max(0, Math.min(1, (P.x + W) / (W * 0.6))));
+  const d = D > 0.5 ? [dx / D, dy / D] : [1, 0];
+  let s0;
+  if (D <= 0.5) s0 = 0;
+  else if (D >= PI * r) s0 = (D + PI * r) / 2;
+  else { let lo = 0, hi = PI * r; for (let k = 0; k < 28; k++) { const m = (lo + hi) / 2; if (m - r * Math.sin(m / r) < D) lo = m; else hi = m; } s0 = (lo + hi) / 2; }
+  return { d, r, D, A: [C0.x - d[0] * s0, C0.y - d[1] * s0] };
+}
+function curlClamp(P) {
+  const { W, H } = R.dims, C0 = CT.C0;
+  P.x = Math.max(-W, Math.min(W, P.x));
+  P.y = C0.y === 0 ? Math.max(0, Math.min(H * 0.6, P.y)) : Math.min(H, Math.max(H * 0.4, P.y));
+  // the spine (left edge) stays put: the corner can't move further than a page width from it
+  const sx = P.x, sy = P.y - C0.y, L = Math.hypot(sx, sy);
+  if (L > W) { P.x = sx * W / L; P.y = C0.y + sy * W / L; }
+  return P;
+}
+function curlDraw() {
+  const gl = CURL.gl; if (!gl || !CT) return;
+  const { W, H } = R.dims, cv = CURL.cv, g = curlGeom();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), cw = Math.round(W * dpr), ch = Math.round(H * dpr);
+  if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+  gl.viewport(0, 0, cw, ch);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  // soft shadow the curl throws on the page underneath
+  const k = 0.42 * Math.min(1, g.D / (W * 0.12)) * Math.max(0, Math.min(1, (CT.P.x + W) / (W * 0.5)));
+  gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  const sh = CURL.sh; gl.useProgram(sh.p);
+  gl.bindBuffer(gl.ARRAY_BUFFER, CURL.quad); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.uniform2f(sh.u.uSize, W, H); gl.uniform2f(sh.u.uA, g.A[0], g.A[1]); gl.uniform2f(sh.u.uD, g.d[0], g.d[1]);
+  gl.uniform1f(sh.u.uR, g.r); gl.uniform1f(sh.u.uK, k);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  // the turning page
+  gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+  const pg = CURL.pg; gl.useProgram(pg.p);
+  gl.bindBuffer(gl.ARRAY_BUFFER, CURL.grid); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, CURL.ibuf);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, CURL.tex); gl.uniform1i(pg.u.uTex, 0);
+  gl.uniform2f(pg.u.uSize, W, H); gl.uniform2f(pg.u.uA, g.A[0], g.A[1]); gl.uniform2f(pg.u.uD, g.d[0], g.d[1]);
+  gl.uniform1f(pg.u.uR, g.r); gl.uniform1f(pg.u.uF, 3 * Math.max(W, H)); gl.uniform1f(pg.u.uZS, 2 * CT.r0 + 4);
+  gl.uniform3f(pg.u.uPaper, CURL.paper[0], CURL.paper[1], CURL.paper[2]);
+  gl.uniform3f(pg.u.uL, -0.45, -0.22, 1); gl.uniform1f(pg.u.uThrough, S.theme === 'dark' ? 0.08 : 0.11);
+  gl.drawElements(gl.TRIANGLES, CURL.nIdx, gl.UNSIGNED_SHORT, 0);
+}
+let curlRaf = 0;
+function curlQueueDraw() { if (!curlRaf) curlRaf = requestAnimationFrame(() => { curlRaf = 0; curlDraw(); }); }
+
+// Start a turn. dir 1 = forward (this page curls away), -1 = back (the previous page curls in).
+function curlBegin(dir, corner) {
+  if (!R || R.anim || R.view !== 'curl' || !CURL.gl) return false;
+  const t = R.cur + dir; if (t < 0 || t >= R.N) return false;
+  const idx = dir > 0 ? R.cur : t;
+  const src = curlPaint(idx); if (!src) return false;
+  const gl = CURL.gl;
+  gl.bindTexture(gl.TEXTURE_2D, CURL.tex);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); } catch (e) { return false; }
+  const { W, H } = R.dims;
+  const C0 = { x: W, y: corner === 'top' ? 0 : H };
+  CT = { dir, t, C0, r0: Math.max(26, Math.min(90, W * 0.11)), P: dir > 0 ? { x: W, y: C0.y } : { x: -W, y: C0.y }, raf: 0, queue: 0 };
+  R.anim = true;
+  curlDraw();
+  CURL.cv.classList.add('on');
+  curlShow(dir > 0 ? t : R.cur);
+  return true;
+}
+function curlAnim(ms, path, done) {
+  cancelAnimationFrame(CT.raf);
+  const ct = CT, t0 = performance.now();
+  const step = now => {
+    if (CT !== ct) return;
+    const e = Math.min(1, (now - t0) / ms);
+    CT.P = path(e); curlDraw();
+    if (e < 1) CT.raf = requestAnimationFrame(step); else done();
+  };
+  CT.raf = requestAnimationFrame(step);
+}
+const easeOut = e => 1 - Math.pow(1 - e, 3);
+const easeInOut = e => e < 0.5 ? 4 * e * e * e : 1 - Math.pow(-2 * e + 2, 3) / 2;
+// let go of a drag: finish the turn or fall back, easing out from where the page is now
+function curlRelease(complete) {
+  if (!CT) return;
+  const { W } = R.dims, from = { x: CT.P.x, y: CT.P.y }, C0 = CT.C0;
+  const flat = { x: C0.x, y: C0.y }, gone = { x: -W, y: C0.y };
+  const to = (CT.dir > 0) === complete ? gone : flat;
+  const dist = Math.hypot(to.x - from.x, to.y - from.y);
+  const ms = Math.max(180, 450 * Math.min(1, dist / (W * 1.2)));
+  curlAnim(ms, e => { const k = easeOut(e); return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k }; }, () => curlFinish(complete));
+}
+function curlFinish(complete) {
+  if (!CT) return;
+  cancelAnimationFrame(CT.raf);
+  const ct = CT; CT = null;
+  if (CURL.cv) CURL.cv.classList.remove('on');
+  R.anim = false;
+  if (complete) { R.cur = ct.t; renderCurlSlots(); afterShown(ct.t); }
+  else curlShow(R.cur);
+  if (ct.queue) curlTurn(ct.queue, true, 380);
+}
+// a whole turn on its own: edge taps, keys, auto-pace and read aloud
+function curlTurn(dir, quiet, ms) {
+  if (!R) return;
+  if (R.anim) { if (CT && !CT.drag) CT.queue = dir; return; }
+  const t = R.cur + dir; if (t < 0 || t >= R.N) return;
+  if (!curlBegin(dir, 'bottom')) { R.cur = t; renderCurlSlots(); afterShown(t); return; }
+  if (!quiet) pageSound();
+  const { W, H } = R.dims, lift = H * 0.2;
+  curlAnim(ms || 620, e => {
+    const k = easeInOut(e), f = dir > 0 ? k : 1 - k;
+    return curlClamp({ x: W - 2 * W * f, y: H - lift * Math.sin(Math.PI * f) });
+  }, () => curlFinish(true));
+}
+// the finger drives the corner
+function curlDrag(p, cx, cy) {
+  if (!CT) return;
+  const { W } = R.dims, rect = stage.getBoundingClientRect();
+  const dx = cx - p.x, dy = cy - p.y, sx = p.x - rect.left;
+  const P = CT.dir > 0
+    ? { x: W + dx * W / Math.max(sx, W * 0.35), y: CT.C0.y + dy * 0.55 }
+    : { x: -W + dx * 2 * W / Math.max(W - sx, W * 0.35), y: CT.C0.y + dy * 0.55 };
+  CT.P = curlClamp(P);
+  const now = performance.now();
+  if (CT.lt) { const dt = Math.max(1, now - CT.lt); CT.v = 0.7 * (CT.v || 0) + 0.3 * ((cx - CT.lx) / dt); }
+  CT.lx = cx; CT.lt = now;
+  curlQueueDraw();
+}
+function curlDragEnd(p, cx) {
+  if (!CT) return;
+  const { W } = R.dims, rect = stage.getBoundingClientRect();
+  const fx = cx - rect.left, dx = cx - p.x, v = CT.v || 0;
+  const done = CT.dir > 0
+    ? (v < 0.3) && ((fx < W / 2 && dx < -24) || dx < -W * 0.3 || v < -0.45)
+    : (v > -0.3) && ((fx > W / 2 && dx > 24) || dx > W * 0.3 || v > 0.45);
+  if (done) pageSound();
+  curlRelease(done);
+}
+function curlAbort() { if (CT) { const ct = CT; ct.queue = 0; curlFinish(false); } }
+
+/* paper sound: made on the fly with WebAudio (a filtered noise swoosh plus a light crinkle) */
+let actx = null, noiseBuf = null;
+function pageSound() {
+  if (!S.sound) return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    actx = actx || new AC();
+    if (actx.state === 'suspended') actx.resume();
+    if (!noiseBuf) {
+      const n = Math.round(actx.sampleRate * 0.8); noiseBuf = actx.createBuffer(1, n, actx.sampleRate);
+      const d = noiseBuf.getChannelData(0); let b = 0;
+      for (let i = 0; i < n; i++) { b = 0.6 * b + 0.4 * (Math.random() * 2 - 1); d[i] = b; } // slightly soft noise, like paper
+    }
+    const t = actx.currentTime + 0.01, out = actx.destination;
+    const src = actx.createBufferSource(); src.buffer = noiseBuf;
+    const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 0.8;
+    bp.frequency.setValueAtTime(700, t); bp.frequency.exponentialRampToValueAtTime(2600, t + 0.15); bp.frequency.exponentialRampToValueAtTime(1100, t + 0.4);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.06); g.gain.exponentialRampToValueAtTime(0.1, t + 0.22); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.44);
+    src.connect(bp); bp.connect(g); g.connect(out); src.start(t, Math.random() * 0.25, 0.46);
+    for (let k = 0; k < 6; k++) {
+      const c = actx.createBufferSource(); c.buffer = noiseBuf;
+      const hp = actx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2400 + Math.random() * 2600;
+      const cg = actx.createGain(), tt = t + 0.02 + Math.random() * 0.32, a = 0.04 + Math.random() * 0.08;
+      cg.gain.setValueAtTime(0.0001, tt); cg.gain.exponentialRampToValueAtTime(a, tt + 0.003); cg.gain.exponentialRampToValueAtTime(0.0001, tt + 0.014 + Math.random() * 0.02);
+      c.connect(hp); hp.connect(cg); cg.connect(out); c.start(tt, Math.random() * 0.6, 0.05);
+    }
+  } catch (e) {}
 }
 
 /* slide view */
@@ -1447,9 +1808,10 @@ function renderSlots() {
     track.appendChild(slot);
   }
 }
-function slideTo(dir) {
+function slideTo(dir, sound) {
   if (R.anim) return;
   const t = R.cur + dir; if (t < 0 || t >= R.N) { track.style.transition = 'transform .2s'; track.style.transform = 'translateX(0)'; return; }
+  if (sound) pageSound();
   R.anim = true;
   track.style.transition = 'transform .3s cubic-bezier(.2,.8,.2,1)';
   track.style.transform = `translateX(${-dir * 100}%)`;
@@ -1460,16 +1822,18 @@ function slideTo(dir) {
 
 function buildView() {
   teardownView();
-  if (S.turn === 'curl') buildCurl(); else buildSlide();
+  R.view = S.turn === 'curl' && buildCurl() ? 'curl' : 'slide';
+  if (R.view === 'slide') buildSlide();
   afterShown(R.cur);
 }
 function go(i) {
   i = Math.max(0, Math.min(R.N - 1, i));
-  if (R.pf) { if (R.dims.spread) i -= i % 2; rewindow(i); }
+  if (R.view === 'curl') { curlAbort(); R.cur = i; renderCurlSlots(); afterShown(i); }
   else { R.cur = i; renderSlots(); afterShown(i); }
 }
-function next() { if (R.pf) R.pf.flipNext('bottom'); else slideTo(1); }
-function prev() { if (R.pf) R.pf.flipPrev('bottom'); else slideTo(-1); }
+// quiet: automatic turns (auto-pace, read aloud) make no page sound
+function next(quiet) { if (R.view === 'curl') curlTurn(1, quiet); else slideTo(1, !quiet); }
+function prev(quiet) { if (R.view === 'curl') curlTurn(-1, quiet); else slideTo(-1, !quiet); }
 
 let saveT = 0;
 function afterShown(i) {
@@ -1492,6 +1856,7 @@ function afterShown(i) {
   placeGuide();
   paceOnNewPage();
   prefetch(i);
+  if (R.view === 'curl') curlPrepaint();
 }
 function updateSeekLabel(n) {
   $('#seekPage').textContent = `Page ${n} of ${R.N}`;
@@ -1625,7 +1990,7 @@ function turnForPacer() {
   const step = R.pf && R.dims.spread ? 2 : 1;
   if (R.cur + step >= R.N) { stopPace(); toast('You reached the end of the book.'); return; }
   R.pendingGuide = 'top';
-  if (document.hidden) go(R.cur + step); else next(); // afterShown carries on from the new page
+  if (document.hidden) go(R.cur + step); else next(true); // afterShown carries on from the new page
 }
 function startPace(mode = 'pace') {
   if (!R) return;
@@ -1792,7 +2157,7 @@ function decoratePage(el, i) {
     blk.innerHTML = html; blk.dataset.marked = '1';
   });
 }
-function refreshMarks() { stage.querySelectorAll('.pg[data-i]').forEach(el => decoratePage(el, +el.dataset.i)); R.lines = null; }
+function refreshMarks() { paintV++; stage.querySelectorAll('.pg[data-i]').forEach(el => decoratePage(el, +el.dataset.i)); R.lines = null; }
 
 function tokAt(x, y) {
   let node = null, off = 0;
@@ -1828,7 +2193,6 @@ function longPress(p) {
   if (R.mode !== 'reflow') { toast('Meanings, highlights and notes work in the Reflow layout.', 3000); return; }
   const k = tokAt(p.x, p.y); if (k < 0) return;
   p.sel = true;
-  if (R.pf) { R.pf.isUserTouch = false; try { R.pf.getFlipController().stopMove(); } catch (e) {} }
   try { navigator.vibrate && navigator.vibrate(12); } catch (e) {}
   if (R.pace && R.pace.on) { pausePace(); R.pace.resume = true; }
   closePanels(true); showChrome(false);
@@ -1963,9 +2327,18 @@ stage.addEventListener('contextmenu', e => e.preventDefault());
 stage.addEventListener('pointermove', e => {
   if (ptr && ptr.sel === true && R && R.sel && R.sel.extending) { const k = tokAt(e.clientX, e.clientY); if (k >= 0 && k !== R.sel.b) { R.sel.b = k; renderSel(); } return; }
   if (ptr && !ptr.sel && Math.hypot(e.clientX - ptr.x, e.clientY - ptr.y) > 8) clearTimeout(ptr.lp);
-  if (!ptr || R.pf || R.anim) return;
+  if (ptr && ptr.curl) { curlDrag(ptr, e.clientX, e.clientY); return; }
+  if (!ptr || R.anim || ptr.drag === 'none') return;
   const dx = e.clientX - ptr.x;
-  if (!ptr.drag && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(e.clientY - ptr.y)) { ptr.drag = true; track.style.transition = 'none'; }
+  if (!ptr.drag && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(e.clientY - ptr.y)) {
+    if (R.view === 'curl') {
+      const top = ptr.y - stage.getBoundingClientRect().top < stage.clientHeight / 2;
+      if (curlBegin(dx < 0 ? 1 : -1, top ? 'top' : 'bottom')) { CT.drag = true; ptr.curl = true; ptr.drag = true; curlDrag(ptr, e.clientX, e.clientY); }
+      else ptr.drag = 'none';
+      return;
+    }
+    ptr.drag = true; track.style.transition = 'none';
+  }
   if (ptr.drag) { const edge = (dx > 0 && R.cur === 0) || (dx < 0 && R.cur === R.N - 1); track.style.transform = `translateX(${edge ? dx * 0.25 : dx}px)`; }
 });
 stage.addEventListener('pointerup', e => {
@@ -1978,10 +2351,12 @@ stage.addEventListener('pointerup', e => {
     if (k >= 0 && !R.sel.hid) { R.sel.b = k; renderSel(); openSelSheet(); } else closeSel();
     return;
   }
+  if (p.curl) { curlDragEnd(p, e.clientX); return; }
+  if (p.drag === 'none') return;
   if (p.drag) {
     const W = stage.clientWidth, v = dx / Math.max(dt, 1);
-    if (dx < -W * 0.18 || (v < -0.45 && dx < -24)) slideTo(1);
-    else if (dx > W * 0.18 || (v > 0.45 && dx > 24)) slideTo(-1);
+    if (dx < -W * 0.18 || (v < -0.45 && dx < -24)) slideTo(1, true);
+    else if (dx > W * 0.18 || (v > 0.45 && dx > 24)) slideTo(-1, true);
     else { track.style.transition = 'transform .2s'; track.style.transform = 'translateX(0)'; }
     return;
   }
@@ -1991,7 +2366,7 @@ stage.addEventListener('pointerup', e => {
     if (f < 0.3) prev(); else if (f > 0.7) next(); else showChrome(true);
   }
 });
-stage.addEventListener('pointercancel', () => { if (ptr) clearTimeout(ptr.lp); if (ptr && ptr.drag) { track.style.transition = 'transform .2s'; track.style.transform = 'translateX(0)'; } ptr = null; });
+stage.addEventListener('pointercancel', () => { if (ptr) clearTimeout(ptr.lp); if (ptr && ptr.curl) curlRelease(false); else if (ptr && ptr.drag === true && track) { track.style.transition = 'transform .2s'; track.style.transform = 'translateX(0)'; } ptr = null; });
 
 $('#seek').addEventListener('input', e => updateSeekLabel(+e.target.value));
 $('#seek').addEventListener('change', e => go(+e.target.value - 1));
@@ -2026,7 +2401,7 @@ async function toggleBookmark() {
   const k = b.bm.findIndex(x => bmIndex(x) === i);
   if (k >= 0) { b.bm.splice(k, 1); toast('Bookmark removed', 1600); }
   else { b.bm.push(Object.assign(posForIndex(i), { at: Date.now(), snip: snippet(i) })); toast('Page bookmarked', 1600); }
-  await saveBook(b);
+  await saveBook(b); paintV++;
   stage.querySelectorAll(`.pg[data-i="${i}"]`).forEach(el => el.classList.toggle('bm', k < 0));
   const mk = k < 0; $('#rMark').setAttribute('aria-pressed', mk); $('#rMark').setAttribute('aria-label', mk ? 'Remove bookmark' : 'Bookmark this page');
   if ($('#bmPanel').classList.contains('open')) renderBmPanel();
@@ -2054,7 +2429,7 @@ $('#bmPanel').addEventListener('click', async e => {
   if (ca) { const t = R.book.title + '\n\n' + (R.book.hl || []).slice().sort((x, y) => (x.p0 - y.p0) || (x.w0 - y.w0)).map(h => '“' + h.text + '”' + (h.note ? '\nNote: ' + h.note : '')).join('\n\n'); copyText(t); return; }
   const g = e.target.closest('[data-go]'), d = e.target.closest('[data-del]'), a = e.target.closest('[data-addbm]');
   if (g) { closePanels(); showChrome(false); go(+g.dataset.go); }
-  else if (d) { const i = bmIndex(R.book.bm[+d.dataset.del]); R.book.bm.splice(+d.dataset.del, 1); await saveBook(R.book); stage.querySelectorAll(`.pg[data-i="${i}"]`).forEach(el => el.classList.toggle('bm', hasBm(i))); $('#rMark').setAttribute('aria-pressed', hasBm(R.cur)); renderBmPanel(); }
+  else if (d) { const i = bmIndex(R.book.bm[+d.dataset.del]); R.book.bm.splice(+d.dataset.del, 1); await saveBook(R.book); paintV++; stage.querySelectorAll(`.pg[data-i="${i}"]`).forEach(el => el.classList.toggle('bm', hasBm(i))); $('#rMark').setAttribute('aria-pressed', hasBm(R.cur)); renderBmPanel(); }
   else if (a) { await toggleBookmark(); renderBmPanel(); }
 });
 
@@ -2080,6 +2455,7 @@ function renderSetPanel() {
     <div class="rp-h">Page</div>
     <div class="opt"><span>Theme</span><div class="seg" role="group">${[['light', '#fbfaf6'], ['sepia', '#f3ead6'], ['dark', '#171614']].map(([v, c]) => `<button type="button" data-set="theme" data-v="${v}" aria-pressed="${S.theme === v}" aria-label="${v} theme"><span class="sw" style="background:${c}"></span></button>`).join('')}</div></div>
     <div class="opt"><span>Page turn</span>${seg('turn', [['curl', 'Curl'], ['slide', 'Slide']])}</div>
+    <div class="opt"><span>Page sound<small>Soft paper sound when you turn a page</small></span>${seg('sound', [['false', 'Off'], ['true', 'On']])}</div>
     <div class="opt"><span>Layout<small>${R.book.scanned ? 'Scanned PDF: original pages only' : R.book.kind === 'epub' ? 'EPUB books always fit your screen' : isSample ? 'Sample text has no original pages' : 'Reflow fits text to your screen'}</small></span>${modeSeg}</div>`;
 }
 function voiceOptions() {
@@ -2116,6 +2492,7 @@ $('#setPanel').addEventListener('click', async e => {
   let v = b.dataset.v; if (v === 'true') v = true; else if (v === 'false') v = false;
   S[key] = v; saveS(); applyReaderStyle(); renderSetPanel();
   if (key === 'guide') { placeGuide(); if (v !== 'off') toast('Tap the band to move down a line. Drag it to jump.', 3200); }
+  if (key === 'sound' && v) pageSound();
   if (key === 'turn') { R.book.pos = posForIndex(R.cur); scheduleRelayout(0); }
   if ((key === 'spacing' || key === 'face' || key === 'bold') && R.mode === 'reflow') { R.book.pos = posForIndex(R.cur); scheduleRelayout(150); }
 });
