@@ -57,6 +57,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 .search input::placeholder{color:var(--chalk-dim)}
 .chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -4px;padding:2px 4px}
 .chips::-webkit-scrollbar{display:none}
+.chips.more{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 44px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 44px),transparent)}
 .chip{flex:none;height:38px;padding:0 16px;border-radius:19px;border:1.5px solid var(--chalk-faint);background:transparent;font-family:var(--f-label);text-transform:uppercase;letter-spacing:.14em;font-size:12px;color:var(--chalk)}
 .chip[aria-pressed="true"]{background:var(--chalk);color:var(--room);border-color:var(--chalk)}
 .chip span{opacity:.6;margin-left:4px;font-variant-numeric:tabular-nums}
@@ -74,19 +75,21 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 .shelf{position:relative;margin-top:4px}
 .shelf-scroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;scroll-behavior:smooth}
 .shelf-scroll::-webkit-scrollbar{display:none}
-.shelf-row{display:flex;align-items:flex-end;gap:4px;padding:52px 22px 0;min-height:318px;width:max-content;min-width:100%;box-sizing:border-box}
-.plank{position:relative;height:16px;margin:0 2px;border:1.5px solid var(--chalk);border-radius:4px 4px 12px 12px;background:linear-gradient(var(--plank),#171411);box-shadow:0 -10px 24px rgba(0,0,0,.6)}
-.plank::before,.plank::after{content:"";position:absolute;top:100%;width:12px;height:22px;border:1.5px solid var(--chalk);border-top:0;border-radius:0 0 3px 3px}
-.plank::before{left:18px;border-right:0}
-.plank::after{right:18px;border-left:0}
+.shelf-row{display:flex;align-items:flex-end;gap:12px;padding:52px 24px 0 16px;min-height:318px;width:max-content;min-width:100%;box-sizing:border-box}
+.shelf-scroll{position:relative;z-index:1;margin:0 -16px -9px}
+.plank{position:relative;height:15px;margin:12px 0 0;border-radius:0 0 4px 4px;background:linear-gradient(#4a3f35,#2e2721 40%,#1c1815);box-shadow:inset 0 1px 0 rgba(239,230,210,.28),0 14px 22px rgba(0,0,0,.65)}
+.plank-top{position:absolute;left:0;right:0;bottom:100%;height:12px;background:linear-gradient(#1e1a17,#3a322b);clip-path:polygon(0 100%,100% 100%,100% 0,12px 0)}
+.plank::before,.plank::after{content:"";position:absolute;top:100%;width:16px;height:26px;background:linear-gradient(90deg,#2a241f,#171411);clip-path:polygon(0 0,100% 0,100% 18%,22% 100%,0 100%)}
+.plank::before{left:22px}
+.plank::after{right:22px;transform:scaleX(-1)}
 .shelf-hint{margin-top:30px;text-align:center;color:var(--chalk-dim);font-size:11px}
 .shelf-top{display:flex;justify-content:flex-end;margin-bottom:-36px;position:relative;z-index:2}
 .view-seg{display:inline-flex;gap:2px;padding:3px;border-radius:18px;border:1.5px solid var(--chalk-faint);background:var(--room)}
 .view-seg button{height:30px;padding:0 12px;border:0;border-radius:15px;background:transparent;color:var(--chalk);font-family:var(--f-label);text-transform:uppercase;letter-spacing:.14em;font-size:11px}
 .view-seg button[aria-pressed="true"]{background:var(--chalk);color:var(--room)}
-.sp-cover{position:relative;flex:none;width:calc(var(--w) - 14px);max-width:34px;aspect-ratio:2/3;margin-top:8px;border-radius:2px;object-fit:cover;box-shadow:0 1px 4px rgba(0,0,0,.45);border:1px solid color-mix(in srgb,var(--fg) 40%,transparent)}
-.sp-done{position:absolute;right:3px;bottom:4px;width:16px;height:16px;border-radius:50%;background:var(--fg);color:var(--c1);font:700 10px/16px var(--f-sans);text-align:center}
-.shelf-row.covers{gap:14px;padding-top:62px;align-items:flex-end}
+.spine.pic::after{display:none}
+.sp-side{position:absolute;top:2px;right:calc(-1 * var(--d));bottom:0;width:var(--d);height:calc(100% - 2px);max-width:none;object-fit:fill;transform:skewY(-40deg);transform-origin:left top;filter:brightness(.62) saturate(.9);pointer-events:none}
+.shelf-row.covers{gap:14px;padding-top:62px;padding-bottom:5px;align-items:flex-end}
 .cover-book{position:relative;flex:none;border:0;padding:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .4s cubic-bezier(.2,.8,.2,1)}
 .cover-book .cb-img{height:178px;width:auto;max-width:150px;border-radius:2px 4px 4px 2px;box-shadow:-3px 0 0 rgba(0,0,0,.25) inset,6px 8px 18px rgba(0,0,0,.6);display:block;object-fit:cover}
 .cover-book .cb-css{height:178px;width:118px;border-radius:2px 4px 4px 2px;box-shadow:6px 8px 18px rgba(0,0,0,.6);display:flex;flex-direction:column;padding:12px;box-sizing:border-box;text-align:left;font:700 15px/1.12 var(--f-book)}
@@ -97,11 +100,11 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 @media (hover:hover){.cover-book:hover{transform:translateY(-6px)}}
 .cover-row{display:flex;gap:8px;flex-wrap:wrap}
 
-.spine{--w:52px;--h:230px;--c1:#e3683e;--c2:#ecc13d;--fg:#fff4e2;--p:0%;position:relative;flex:none;width:var(--w);height:var(--h);border:0;padding:12px 0 8px;border-radius:3px 3px 1px 1px;background:linear-gradient(to bottom,var(--c1) 0 80%,var(--c2) 80%);color:var(--fg);display:flex;flex-direction:column;align-items:center;transition:transform .4s cubic-bezier(.2,.8,.2,1),filter .3s;box-shadow:6px 0 10px rgba(0,0,0,.45)}
+.spine{--w:52px;--h:230px;--d:11px;--c1:#e3683e;--c2:#ecc13d;--fg:#fff4e2;--p:0%;position:relative;flex:none;width:var(--w);height:var(--h);border:0;padding:12px 0 8px;border-radius:3px 3px 1px 1px;background:linear-gradient(to bottom,var(--c1) 0 86%,var(--c2) 86%);color:var(--fg);display:flex;flex-direction:column;align-items:center;transition:transform .4s cubic-bezier(.2,.8,.2,1),filter .3s;box-shadow:6px 0 10px rgba(0,0,0,.45)}
 .spine::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(90deg,rgba(0,0,0,.3),rgba(255,255,255,.12) 16%,rgba(255,255,255,0) 38%,rgba(0,0,0,.06) 70%,rgba(0,0,0,.34));pointer-events:none}
-.spine::after{content:"";position:absolute;top:2px;right:-6px;bottom:0;width:6px;background:var(--c1);filter:brightness(.45);transform:skewY(-40deg);transform-origin:left top;pointer-events:none}
-.sp-title{position:relative;writing-mode:vertical-rl;font-family:var(--f-book);font-weight:700;font-size:15px;line-height:1.08;flex:1;min-height:0;overflow:hidden;max-width:calc(var(--w) - 8px);text-align:start}
-.sp-author{position:relative;writing-mode:vertical-rl;font-family:var(--f-label);font-size:9px;letter-spacing:.16em;text-transform:uppercase;opacity:.85;max-height:64px;overflow:hidden;margin-top:6px;white-space:nowrap}
+.spine::after{content:"";position:absolute;top:2px;right:calc(-1 * var(--d));bottom:0;width:var(--d);background:var(--c1);filter:brightness(.45);transform:skewY(-40deg);transform-origin:left top;pointer-events:none}
+.sp-title{position:relative;writing-mode:vertical-rl;font-family:var(--f-book);font-weight:700;font-size:15px;line-height:1.08;overflow-wrap:normal;flex:1;min-height:0;overflow:hidden;max-width:calc(var(--w) - 8px);text-align:start}
+.sp-author{position:relative;flex:none;writing-mode:vertical-rl;font-family:var(--f-book);font-size:10px;line-height:1.15;letter-spacing:.1em;text-transform:uppercase;opacity:.85;max-height:calc(var(--h) * .4);max-width:calc(var(--w) - 10px);overflow:hidden;margin-top:8px;white-space:nowrap}
 .sp-badge{position:relative;flex:none;width:24px;height:24px;border-radius:50%;margin-top:8px;background:var(--c1);color:var(--fg);border:1.5px solid var(--fg);display:grid;place-items:center;font:700 9px/1 var(--f-sans);letter-spacing:.04em}
 .sp-prog{position:absolute;left:4px;bottom:0;width:3px;height:var(--p);background:var(--fg);opacity:.75;border-radius:2px 2px 0 0}
 .spine.pulled{transform:translateY(-26px);filter:brightness(1.08)}
@@ -111,6 +114,16 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
 .shelf-empty p{margin:0;font-family:var(--f-display);font-size:30px}
 .shelf-empty .pill{pointer-events:auto;background:var(--room)}
 .nomatch{align-self:center;margin:auto;padding-bottom:60px;color:var(--chalk-dim)}
+
+#library .label:not(.shelf-hint),#library .pill,#library .search input,#library .chip,#library .view-seg button{font-family:var(--f-book);text-transform:none;letter-spacing:.01em}
+#library .label:not(.shelf-hint){font-size:14px}
+#library .pill{font-size:15px}
+#library .pill.solid{font-weight:700}
+#library .search input{font-size:16px}
+#library .chip{font-size:14px}
+#library .view-seg button{font-size:13px}
+#library .cont-meta{font-family:var(--f-book);font-size:13px}
+#library .cont .label{font-style:italic;font-size:13px!important}
 
 /* ---------- Book sheet ---------- */
 #sheetWrap{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);opacity:0;transition:opacity .25s}
@@ -297,6 +310,7 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
     <h1 class="brand">Bookorig</h1>
     <p class="brand-sub">your pocket library</p>
   </header>
+  <button class="cont" id="cont" type="button" hidden></button>
   <div class="lib-row">
     <span id="count" class="label">0 books</span>
     <div class="pill-row">
@@ -310,11 +324,10 @@ button:focus-visible,input:focus-visible,.spine:focus-visible{outline:2px solid 
     <input id="q" type="search" placeholder="What are you looking for?" autocomplete="off">
   </label>
   <div class="chips" id="chips" role="group" aria-label="Filter books"></div>
-  <button class="cont" id="cont" type="button" hidden></button>
   <section class="shelf" aria-label="Bookshelf">
     <div class="shelf-top"><div class="view-seg" role="group" aria-label="Shelf view"><button type="button" data-view="spines">Spines</button><button type="button" data-view="covers">Covers</button></div></div>
     <div class="shelf-scroll" id="shelfScroll"><div class="shelf-row" id="shelfRow"></div></div>
-    <div class="plank"></div>
+    <div class="plank"><i class="plank-top"></i></div>
     <div class="shelf-empty" id="shelfEmpty" hidden>
       <p>Your shelf is empty</p>
       <button class="pill" type="button" id="addBtn2">Add your first book</button>
@@ -459,6 +472,7 @@ function renderLib() {
   $('#count').textContent = `${books.length} ${books.length === 1 ? 'book' : 'books'}` + (counts.reading ? ` · ${counts.reading} reading` : '');
   const chips = [['all', 'All'], ['reading', 'Reading'], ['unread', 'Unread'], ['finished', 'Finished']];
   $('#chips').innerHTML = chips.map(([k, l]) => `<button class="chip" type="button" data-f="${k}" aria-pressed="${filter === k}">${l}<span>${counts[k]}</span></button>`).join('');
+  chipFade();
 
   const last = books.filter(b => b.opened && !b.finished).sort((a, b) => b.opened - a.opened)[0];
   const cont = $('#cont');
@@ -487,7 +501,25 @@ function renderLib() {
   if (!list.length) { row.innerHTML = `<p class="nomatch label">No books match${q ? ` “${esc(query.trim())}”` : ''}</p>`; return; }
   row.classList.toggle('covers', shelfView === 'covers');
   row.innerHTML = list.map(shelfView === 'covers' ? coverBookHTML : spineHTML).join('');
+  fitSpines();
 }
+// Shrink each spine's author, then title, until the text fits the spine.
+function fitSpines() {
+  // Columns run sideways; compare against the widest the spine allows (bold glyphs overhang their box by a pixel or two).
+  const over = el => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > parseFloat(getComputedStyle(el).maxWidth) + 1;
+  document.querySelectorAll('#shelfRow .spine').forEach(sp => {
+    if (!sp.clientHeight) return;
+    const a = sp.querySelector('.sp-author'), t = sp.querySelector('.sp-title');
+    if (a) {
+      a.style.whiteSpace = ''; let f = 10; a.style.fontSize = f + 'px';
+      while (f > 7.5 && over(a)) a.style.fontSize = (f -= .5) + 'px';
+      if (over(a)) { a.style.whiteSpace = 'normal'; f = 10; a.style.fontSize = f + 'px'; while (f > 6.5 && over(a)) a.style.fontSize = (f -= .5) + 'px'; }
+    }
+    let f = 17; t.style.fontSize = f + 'px';
+    while (f > 8 && over(t)) t.style.fontSize = (f -= .5) + 'px';
+  });
+}
+function chipFade() { const c = $('#chips'); c.classList.toggle('more', c.scrollLeft + c.clientWidth < c.scrollWidth - 2); }
 function visibleBooks(q = query.trim().toLowerCase()) {
   return books.filter(b => (filter === 'all' || status(b) === filter) && (!q || (b.title + ' ' + (b.author || '')).toLowerCase().includes(q))).sort((a, b) => a.added - b.added);
 }
@@ -534,9 +566,9 @@ function spineHTML(b) {
   const h = 200 + (hash(b.id) % 6) * 11;
   const w = Math.max(44, Math.min(74, 40 + Math.round((b.pages || 120) / 14)));
   const pct = Math.round((b.progress || 0) * 100);
-  return `<button class="spine${b.id === selectedId ? ' pulled' : ''}" type="button" data-id="${b.id}" style="--w:${w}px;--h:${h}px;--c1:${c1};--c2:${c2};--fg:${fg};--p:${pct}%" aria-label="${esc(b.title)}${b.author ? ' by ' + esc(b.author) : ''}, ${b.finished ? 'finished' : pct + '% read'}">
+  return `<button class="spine${hasPic(b) ? ' pic' : ''}${b.id === selectedId ? ' pulled' : ''}" type="button" data-id="${b.id}" style="--w:${w}px;--h:${h}px;--c1:${c1};--c2:${c2};--fg:${fg};--p:${pct}%" aria-label="${esc(b.title)}${b.author ? ' by ' + esc(b.author) : ''}, ${b.finished ? 'finished' : pct + '% read'}">
     <span class="sp-title">${esc(b.title.replace(/[’‘]/g, "'"))}</span>${b.author ? `<span class="sp-author">${esc(b.author)}</span>` : ''}
-    ${hasPic(b) ? `<img class="sp-cover" src="${b.cover}" alt="">${b.finished ? '<span class="sp-done" aria-hidden="true">✓</span>' : ''}` : `<span class="sp-badge">${b.finished ? '✓' : esc(initials(b))}</span>`}<span class="sp-prog"></span></button>`;
+    ${hasPic(b) ? (b.finished ? '<span class="sp-badge">✓</span>' : '') : `<span class="sp-badge">${b.finished ? '✓' : esc(initials(b))}</span>`}<span class="sp-prog"></span>${hasPic(b) ? `<img class="sp-side" src="${b.cover}" alt="">` : ''}</button>`;
 }
 function coverThumb(b) {
   if (b.cover) return `<img src="${b.cover}" alt="">`;
@@ -2575,6 +2607,9 @@ $('#addBtn2').addEventListener('click', () => $('#file').click());
 $('#file').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; for (const f of fs) await addFile(f); });
 $('#q').addEventListener('input', e => { query = e.target.value; renderLib(); });
 $('#chips').addEventListener('click', e => { const c = e.target.closest('.chip'); if (!c) return; filter = c.dataset.f; renderLib(); });
+$('#chips').addEventListener('scroll', chipFade, { passive: true });
+addEventListener('resize', chipFade);
+if (document.fonts) document.fonts.ready.then(() => { fitSpines(); chipFade(); });
 $('#shelfRow').addEventListener('click', e => { const s = e.target.closest('.spine, .cover-book'); if (s) openSheet(s.dataset.id); });
 document.querySelector('.view-seg').addEventListener('click', e => { const v = e.target.closest('button'); if (!v) return; shelfView = v.dataset.view; lsSet('bookorig.shelfView', shelfView); renderLib(); });
 $('#cont').addEventListener('click', () => openBook($('#cont').dataset.id));
