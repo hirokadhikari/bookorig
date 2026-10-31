@@ -1729,7 +1729,7 @@ function curlTurn(dir, quiet, ms) {
   if (R.anim) { if (CT && !CT.drag) CT.queue = dir; return; }
   const t = R.cur + dir; if (t < 0 || t >= R.N) return;
   if (!curlBegin(dir, 'bottom')) { R.cur = t; renderCurlSlots(); afterShown(t); return; }
-  if (!quiet) pageSound();
+  if (!quiet) pageSound(ms || 620);
   const { W, H } = R.dims, lift = H * 0.2;
   curlAnim(ms || 620, e => {
     const k = easeInOut(e), f = dir > 0 ? k : 1 - k;
@@ -1757,38 +1757,62 @@ function curlDragEnd(p, cx) {
   const done = CT.dir > 0
     ? (v < 0.3) && ((fx < W / 2 && dx < -24) || dx < -W * 0.3 || v < -0.45)
     : (v > -0.3) && ((fx > W / 2 && dx > 24) || dx > W * 0.3 || v > 0.45);
-  if (done) pageSound();
+  if (done) pageSound(Math.max(240, 450 * Math.min(1, Math.abs((CT.dir > 0 ? -R.dims.W : R.dims.W) - CT.P.x) / (R.dims.W * 1.2))));
   curlRelease(done);
 }
 function curlAbort() { if (CT) { const ct = CT; ct.queue = 0; curlFinish(false); } }
 
-/* paper sound: made on the fly with WebAudio (a filtered noise swoosh plus a light crinkle) */
-let actx = null, noiseBuf = null;
-function pageSound() {
+/* paper sound: made on the fly with WebAudio. A real page turn is a soft lift, an airy
+   swoosh that swells and fades as the page sweeps over, then a gentle flap as it lands. */
+let actx = null, pinkBuf = null;
+function pinkNoise(ctx, sec) {
+  const n = Math.round(ctx.sampleRate * sec), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, pk = 0;
+  for (let i = 0; i < n; i++) { // Paul Kellet's pink filter: smoother and softer than white noise
+    const w = Math.random() * 2 - 1;
+    b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.969 * b2 + w * 0.153852;
+    b3 = 0.8665 * b3 + w * 0.3104856; b4 = 0.55 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.016898;
+    d[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362; b6 = w * 0.115926;
+    pk = Math.max(pk, Math.abs(d[i]));
+  }
+  for (let i = 0; i < n; i++) d[i] /= pk;
+  return buf;
+}
+function flipSound(ctx, dest, t, dur, buf) {
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const noise = (at, len) => { const s = ctx.createBufferSource(); s.buffer = buf; s.start(at, rnd(0, buf.duration - len - 0.05), len); return s; };
+  const filt = (type, f, q) => { const x = ctx.createBiquadFilter(); x.type = type; x.frequency.value = f; x.Q.value = q; return x; };
+  // swoosh: band of soft noise that brightens as the page rises, then dims as it comes down
+  const sw = noise(t, dur + 0.1), lp = filt('lowpass', 5200, 0.4), bp = filt('bandpass', 800, 0.5), sg = ctx.createGain();
+  bp.frequency.setValueAtTime(800, t);
+  bp.frequency.linearRampToValueAtTime(rnd(2000, 2500), t + dur * 0.45);
+  bp.frequency.linearRampToValueAtTime(1000, t + dur * 0.95);
+  sg.gain.setValueAtTime(0, t);
+  sg.gain.linearRampToValueAtTime(0.55, t + dur * 0.4);
+  sg.gain.setTargetAtTime(0, t + dur * 0.55, dur * 0.14);
+  // the paper's slight flutter: a slow wobble in loudness instead of sharp crackles
+  const fl = noise(t, dur + 0.1), flp = filt('lowpass', 18, 0.7), fg = ctx.createGain(), mod = ctx.createGain();
+  fg.gain.value = 0.9; mod.gain.value = 1;
+  fl.connect(flp); flp.connect(fg); fg.connect(mod.gain);
+  sw.connect(lp); lp.connect(bp); bp.connect(mod); mod.connect(sg); sg.connect(dest);
+  // a faint dry rustle on top, much quieter than the swoosh
+  const ru = noise(t, dur), rbp = filt('bandpass', 3200, 0.7), rg = ctx.createGain();
+  rg.gain.setValueAtTime(0, t); rg.gain.linearRampToValueAtTime(0.08, t + dur * 0.3); rg.gain.setTargetAtTime(0, t + dur * 0.5, dur * 0.12);
+  ru.connect(rbp); rbp.connect(rg); rg.connect(dest);
+  // soft flap as the page settles
+  const lt = t + dur * 0.82, fp = noise(lt, 0.2), flo = filt('lowpass', 320, 0.8), fpg = ctx.createGain();
+  fpg.gain.setValueAtTime(0, lt); fpg.gain.linearRampToValueAtTime(0.45, lt + 0.008); fpg.gain.setTargetAtTime(0, lt + 0.012, 0.03);
+  fp.connect(flo); flo.connect(fpg); fpg.connect(dest);
+}
+function pageSound(ms = 600) {
   if (!S.sound) return;
   try {
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     actx = actx || new AC();
     if (actx.state === 'suspended') actx.resume();
-    if (!noiseBuf) {
-      const n = Math.round(actx.sampleRate * 0.8); noiseBuf = actx.createBuffer(1, n, actx.sampleRate);
-      const d = noiseBuf.getChannelData(0); let b = 0;
-      for (let i = 0; i < n; i++) { b = 0.6 * b + 0.4 * (Math.random() * 2 - 1); d[i] = b; } // slightly soft noise, like paper
-    }
-    const t = actx.currentTime + 0.01, out = actx.destination;
-    const src = actx.createBufferSource(); src.buffer = noiseBuf;
-    const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 0.8;
-    bp.frequency.setValueAtTime(700, t); bp.frequency.exponentialRampToValueAtTime(2600, t + 0.15); bp.frequency.exponentialRampToValueAtTime(1100, t + 0.4);
-    const g = actx.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.06); g.gain.exponentialRampToValueAtTime(0.1, t + 0.22); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.44);
-    src.connect(bp); bp.connect(g); g.connect(out); src.start(t, Math.random() * 0.25, 0.46);
-    for (let k = 0; k < 6; k++) {
-      const c = actx.createBufferSource(); c.buffer = noiseBuf;
-      const hp = actx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2400 + Math.random() * 2600;
-      const cg = actx.createGain(), tt = t + 0.02 + Math.random() * 0.32, a = 0.04 + Math.random() * 0.08;
-      cg.gain.setValueAtTime(0.0001, tt); cg.gain.exponentialRampToValueAtTime(a, tt + 0.003); cg.gain.exponentialRampToValueAtTime(0.0001, tt + 0.014 + Math.random() * 0.02);
-      c.connect(hp); hp.connect(cg); cg.connect(out); c.start(tt, Math.random() * 0.6, 0.05);
-    }
+    if (!pinkBuf) pinkBuf = pinkNoise(actx, 2);
+    const out = actx.createGain(); out.gain.value = 0.6; out.connect(actx.destination);
+    flipSound(actx, out, actx.currentTime + 0.01, Math.max(0.28, Math.min(0.75, ms / 1000)), pinkBuf);
   } catch (e) {}
 }
 
@@ -1811,7 +1835,7 @@ function renderSlots() {
 function slideTo(dir, sound) {
   if (R.anim) return;
   const t = R.cur + dir; if (t < 0 || t >= R.N) { track.style.transition = 'transform .2s'; track.style.transform = 'translateX(0)'; return; }
-  if (sound) pageSound();
+  if (sound) pageSound(320);
   R.anim = true;
   track.style.transition = 'transform .3s cubic-bezier(.2,.8,.2,1)';
   track.style.transform = `translateX(${-dir * 100}%)`;
